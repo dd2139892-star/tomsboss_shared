@@ -9,7 +9,7 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial}
   .container{max-width:1100px;margin:24px auto;padding:0 16px}
-  h1{font-size:20px;margin:0 0 14px}
+  h1{font-size:20px;margin:0 0 14px;display:flex;gap:10px;align-items:center}
   .row{display:flex;gap:10px;flex-wrap:wrap}
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
   .toolbar .btn,.btn{background:#1f2937;border:1px solid #2b3446;color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
@@ -27,73 +27,33 @@
   .muted{color:var(--muted)}
   .footer{margin-top:8px;font-size:12px;color:#94a3b8}
   .hidden{display:none!important}
-
-  /* 遮罩／對話框（密碼 & 分流後移） */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50}
   .modal{width:360px;max-width:92vw;background:#121826;border:1px solid #1f2a44;border-radius:14px;padding:18px}
   .modal h3{margin:0 0 10px;font-size:18px}
   .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
   .modal button{background:#1f2937;border:1px solid var(--border);color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
   .modal button.primary{background:#2563eb;border-color:#2563eb}
-
-  /* 倒數時間控制 */
   .time-ctrl{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
   .time-unit{display:flex;align-items:center;gap:8px}
   .time-col{display:flex;flex-direction:column;gap:6px}
   .btn.small{padding:2px 6px;font-size:12px}
   .btn.small.square{width:38px;padding:6px 0;font-size:12px;text-align:center}
-
-  /* 地圖色條與整列底色 */
   tr.rowMap{ border-left:6px solid transparent; }
   .mapBadge{ display:inline-flex; align-items:center; gap:8px; justify-content:center }
   .mapDot{ width:10px;height:10px;border-radius:50%; display:inline-block }
-
-  /* 整列淡色背景 */
   tr.rowMap[data-soft]{ background: var(--row-soft); }
-
-  /* 密碼輸入提示 */
+  .timeStrike{ text-decoration: line-through; opacity:.65 }
   .pw-msg{margin-top:8px;font-size:12px;color:#9fb2d1}
+  .badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid #2b3446;color:#cbd5e1}
 </style>
 </head>
 <body>
 
-<!-- 密碼遮罩（方案 C：Supabase RPC） -->
-<div id="pwOverlay" class="overlay">
-  <div class="modal">
-    <h3>密碼驗證</h3>
-    <p class="muted" style="margin:6px 0 10px">請輸入本週密碼才能進入（伺服器驗證）。</p>
-    <input id="pwInput" type="password" placeholder="本週密碼" style="width:100%">
-    <div class="actions">
-      <button id="pwCancel">離開</button>
-      <button id="pwOk" class="primary">確定</button>
-    </div>
-    <div id="pwMsg" class="pw-msg"></div>
-  </div>
-</div>
-
-<!-- 分流後移對話框 -->
-<div id="shiftOverlay" class="overlay hidden">
-  <div class="modal" style="width:420px">
-    <h3>分流後移</h3>
-    <div class="muted" style="margin:6px 0 4px">章節 (EP)</div>
-    <select id="shiftEp" style="width:100%"></select>
-
-    <div class="muted" style="margin:10px 0 4px">地圖名稱</div>
-    <select id="shiftMap" style="width:100%"></select>
-
-    <div class="muted" style="margin:10px 0 4px">插入的分流號（從這個分流開始往後 +1）</div>
-    <input id="shiftAt" type="number" min="1" step="1" value="1" style="width:100%">
-
-    <div class="actions">
-      <button id="shiftCancel">取消</button>
-      <button id="shiftOk" class="primary">確定後移</button>
-    </div>
-    <div id="shiftMsg" class="muted" style="margin-top:8px;font-size:12px"></div>
-  </div>
-</div>
-
 <div class="container">
-  <h1>麥當勞單點專用_多人共用版 v1（Web）</h1>
+  <h1>
+    麥當勞單點專用_多人共用版 v1（Web）
+    <span id="rtStatus" class="badge">Realtime: …</span>
+  </h1>
 
   <div class="card">
     <div class="grid" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">
@@ -194,15 +154,47 @@
           <th>時間</th>
         </tr>
       </thead>
-      <tbody id="tbody"></tbody>
+    <tbody id="tbody"></tbody>
     </table>
-    <div class="footer">依時間（實際到點）排序；相同「章節+地圖+分流」新增第二次會覆蓋第一次；資料儲存在瀏覽器的 localStorage；主資料來自 Supabase。</div>
+    <div class="footer">依時間（實際到點）排序；相同「章節+地圖+分流」新增第二次會覆蓋第一次；資料儲存在瀏覽器的 localStorage；主資料來自 Supabase（已啟用 Realtime 自動同步）。</div>
+  </div>
+</div>
+
+<!-- 密碼遮罩（RPC 驗證） -->
+<div id="pwOverlay" class="overlay">
+  <div class="modal">
+    <h3>密碼驗證</h3>
+    <p class="muted" style="margin:6px 0 10px">請輸入本週密碼才能進入（伺服器驗證）。</p>
+    <input id="pwInput" type="password" placeholder="本週密碼" style="width:100%">
+    <div class="actions">
+      <button id="pwCancel">離開</button>
+      <button id="pwOk" class="primary">確定</button>
+    </div>
+    <div id="pwMsg" class="pw-msg"></div>
+  </div>
+</div>
+
+<!-- 分流後移對話框 -->
+<div id="shiftOverlay" class="overlay hidden">
+  <div class="modal" style="width:420px">
+    <h3>分流後移</h3>
+    <div class="muted" style="margin:6px 0 4px">章節 (EP)</div>
+    <select id="shiftEp" style="width:100%"></select>
+    <div class="muted" style="margin:10px 0 4px">地圖名稱</div>
+    <select id="shiftMap" style="width:100%"></select>
+    <div class="muted" style="margin:10px 0 4px">插入的分流號（從這個分流開始往後 +1）</div>
+    <input id="shiftAt" type="number" min="1" step="1" value="1" style="width:100%">
+    <div class="actions">
+      <button id="shiftCancel">取消</button>
+      <button id="shiftOk" class="primary">確定後移</button>
+    </div>
+    <div id="shiftMsg" class="muted" style="margin-top:8px;font-size:12px"></div>
   </div>
 </div>
 
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
-/** ========= 專案連線 ========= */
+/** ========= Supabase ========= */
 const SUPABASE_URL = "https://pvgisrubrsitesqpiimr.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2Z2lzcnVicnNpdGVzcXBpaW1yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDExNjMsImV4cCI6MjA3MzA3NzE2M30.TQh3vDTpUkDJA58wA7EN3msFTHhz0c72TEXCl1Lg1zc";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -229,7 +221,27 @@ const state = {
   alertBeforeMin: 0,
 };
 
-/** ========= 小工具 ========= */
+/** ========= DOM ========= */
+const epSel=document.getElementById('ep');
+const mapSel=document.getElementById('map');
+const levelInp=document.getElementById('level');
+const chSel=document.getElementById('channel');
+const hhInp=document.getElementById('hh');
+const mmInp=document.getElementById('mm');
+const ssInp=document.getElementById('ss');
+const tbody=document.getElementById('tbody');
+const soundToggle=document.getElementById('soundToggle');
+const alertBefore=document.getElementById('alertBefore');
+const rtStatus=document.getElementById('rtStatus');
+
+/* 分流後移 */
+const shiftOverlay=document.getElementById('shiftOverlay');
+const shiftEp=document.getElementById('shiftEp');
+const shiftMap=document.getElementById('shiftMap');
+const shiftAt=document.getElementById('shiftAt');
+const shiftMsg=document.getElementById('shiftMsg');
+
+/** ========= 工具 ========= */
 const pad2 = n => String(n).padStart(2,"0");
 const fmtTime = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 function fmtDisplayTime(target){
@@ -275,26 +287,7 @@ function load(){
   try{const p=JSON.parse(localStorage.getItem(LS_PREF)||"{}"); if(typeof p?.soundEnabled==="boolean") state.soundEnabled=p.soundEnabled; if(typeof p?.alertBeforeMin==="number") state.alertBeforeMin=p.alertBeforeMin;}catch{}
 }
 
-/** ========= UI 綁定 ========= */
-const epSel=document.getElementById('ep');
-const mapSel=document.getElementById('map');
-const levelInp=document.getElementById('level');
-const chSel=document.getElementById('channel');
-const hhInp=document.getElementById('hh');
-const mmInp=document.getElementById('mm');
-const ssInp=document.getElementById('ss');
-const tbody=document.getElementById('tbody');
-const soundToggle=document.getElementById('soundToggle');
-const alertBefore=document.getElementById('alertBefore');
-
-/* 分流後移 */
-const shiftOverlay=document.getElementById('shiftOverlay');
-const shiftEp=document.getElementById('shiftEp');
-const shiftMap=document.getElementById('shiftMap');
-const shiftAt=document.getElementById('shiftAt');
-const shiftMsg=document.getElementById('shiftMsg');
-
-/** 初始化 selector */
+/** ========= 初始化選單 ========= */
 function initSelectors(){
   epSel.innerHTML = Object.keys(EP_MAP_LEVEL).map(ep=>`<option value="${ep}">${ep}</option>`).join("");
   chSel.innerHTML = CHANNELS.map(c=>`<option value="${c}">${c}</option>`).join("");
@@ -343,7 +336,7 @@ function render(){
   }).join("");
 }
 
-/** ========= 新增/刪除/複製 ========= */
+/** ========= 新增/刪除/複製（樂觀更新＋自動同步） ========= */
 function clamp(v,lo,hi){v=parseInt(v,10); if(isNaN(v)) v=0; return Math.max(lo,Math.min(hi,v));}
 
 document.getElementById('addBtn').addEventListener('click', async ()=>{
@@ -353,10 +346,16 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   if(h===0&&m===0&&s===0) return alert('倒數時間不可為 0');
 
   const target=new Date(Date.now()+(h*3600+m*60+s)*1000).toISOString();
-  const row={ ep, map, level, channel: ch, target_iso: target, checked:false, dead:false, updated_at:new Date().toISOString() };
+  const rowDb={ ep, map, level, channel: ch, target_iso: target, dead:false, updated_at:new Date().toISOString() };
 
-  // Upsert 到 Supabase（唯一鍵：ep+map+channel）
-  await sb.from('entries').upsert(row, { onConflict: 'ep,map,channel' });
+  // 寫 DB（不含 checked，避免把勾選同步出去）
+  const { data, error } = await sb.from('entries').upsert(rowDb, { onConflict: 'ep,map,channel' }).select().single();
+  if(error){ alert('新增失敗：'+error.message); return; }
+
+  // 本地立即顯示（樂觀更新），Realtime 會推送到其他裝置
+  const key = keyOf(data.ep, data.map, data.channel);
+  state.entries[key] = { ...data, checked:false, alertedBefore:false, alertedFinal:false };
+  save(); render();
 });
 
 document.getElementById('copyCheckedBtn').addEventListener('click', ()=>{
@@ -380,26 +379,35 @@ document.getElementById('copyAllBtn').addEventListener('click', ()=>{
 document.getElementById('delCheckedBtn').addEventListener('click', async ()=>{
   const keys=Object.values(state.entries).filter(v=>v.checked).map(v=>({ep:v.ep,map:v.map,channel:v.channel}));
   if(!keys.length) return alert('沒有勾選任何列');
-  for(const k of keys){ await sb.from('entries').delete().eq('ep',k.ep).eq('map',k.map).eq('channel',k.channel); }
+  for(const k of keys){
+    await sb.from('entries').delete().eq('ep',k.ep).eq('map',k.map).eq('channel',k.channel);
+    delete state.entries[keyOf(k.ep,k.map,k.channel)];
+  }
+  save(); render();
 });
 document.getElementById('delAllBtn').addEventListener('click', async ()=>{
   if(!confirm('確定要清除全部嗎？')) return;
   await sb.from('entries').delete().neq('ep','__never__');
+  state.entries = {}; save(); render();
 });
 
-/** checkbox & 標註死亡 */
+/** checkbox 本地專用（不寫 DB、不觸發同步） */
 tbody.addEventListener('change', async (e)=>{
   if(!e.target.classList.contains('chk')) return;
   const tr=e.target.closest('tr'); const key=tr.dataset.key;
   const row=state.entries[key]; if(!row) return;
-  await sb.from('entries').update({checked:e.target.checked, updated_at:new Date().toISOString()})
-    .eq('ep',row.ep).eq('map',row.map).eq('channel',row.channel);
+  row.checked = e.target.checked;
+  state.entries[key]=row; save(); render();
 });
+/** 標註死亡（需要同步，寫 DB） */
 tbody.addEventListener('click', async (e)=>{
   if(!e.target.classList.contains('dead-btn')) return;
   const tr=e.target.closest('tr'); const key=tr.dataset.key; const row=state.entries[key]; if(!row) return;
-  await sb.from('entries').update({dead: !row.dead, updated_at:new Date().toISOString()})
+  const newDead = !row.dead;
+  await sb.from('entries').update({dead: newDead, updated_at:new Date().toISOString()})
     .eq('ep',row.ep).eq('map',row.map).eq('channel',row.channel);
+  row.dead = newDead; row.updated_at=new Date().toISOString();
+  state.entries[key]=row; save(); render();
 });
 
 /** ========= 分流後移 ========= */
@@ -412,15 +420,17 @@ shiftEp.addEventListener('change', refreshShiftMaps);
 document.getElementById('shiftOk').addEventListener('click', async ()=>{
   const ep=shiftEp.value, map=shiftMap.value; let at=parseInt(shiftAt.value,10);
   if(!ep||!map||!at||at<1){ shiftMsg.textContent='請輸入正確的分流號（>=1）'; return; }
-  // 找出 >= at 的 rows，從大到小更新 channel+1
   const { data } = await sb.from('entries').select('*').eq('ep',ep).eq('map',map);
   const list=(data||[]).filter(r=>parseInt(r.channel,10)>=at).sort((a,b)=>parseInt(b.channel,10)-parseInt(a.channel,10));
   if(!list.length){ shiftMsg.textContent='沒有可後移的分流。'; return; }
   for(const r of list){
     const newCh=String(parseInt(r.channel,10)+1);
-    await sb.from('entries').upsert({ ...r, channel:newCh, updated_at:new Date().toISOString() }, { onConflict:'ep,map,channel' });
+    await sb.from('entries').upsert({ ep:r.ep, map:r.map, level:r.level, channel:newCh, target_iso:r.target_iso, dead:r.dead, updated_at:new Date().toISOString() }, { onConflict:'ep,map,channel' });
     await sb.from('entries').delete().eq('ep',r.ep).eq('map',r.map).eq('channel',r.channel);
+    state.entries[keyOf(r.ep,r.map,newCh)] = { ...r, channel:newCh, updated_at:new Date().toISOString() };
+    delete state.entries[keyOf(r.ep,r.map,r.channel)];
   }
+  save(); render();
   shiftOverlay.classList.add('hidden');
 });
 
@@ -438,7 +448,7 @@ setInterval(()=>{
   render();
 }, 1000);
 
-/** 倒數控制按鈕（修好事件代理） */
+/** 倒數控制按鈕 */
 document.addEventListener('click', e=>{
   const btn=e.target.closest('.plusminus'); if(!btn) return;
   const id=btn.getAttribute('data-target'); const delta=parseInt(btn.getAttribute('data-delta'),10)||0;
@@ -448,30 +458,63 @@ document.addEventListener('click', e=>{
   input.value=v;
 });
 
-/** ========= Realtime 同步 ========= */
+/** ========= Realtime 同步（萬用事件 + 去重 + debounce resync） ========= */
+let resyncTimer=null;
+function scheduleResync(){ clearTimeout(resyncTimer); resyncTimer=setTimeout(()=>pullAll(), 500); }
+
 async function startRealtime(){
-  // 先拉一次全部
   await pullAll();
 
-  const channel = sb.channel('entries-ch')
-    .on('postgres_changes', {event:'INSERT', schema:'public', table:'entries'}, payload => {
-      const r=payload.new; const key=keyOf(r.ep,r.map,r.channel); state.entries[key]=r; save(); render();
+  const ch = sb.channel('entries-ch')
+    .on('postgres_changes', { event:'*', schema:'public', table:'entries' }, payload => {
+      const e = payload.eventType;
+      console.log('Realtime payload:', e, payload);
+      if (e === 'INSERT' || e === 'UPDATE') {
+        const r = payload.new;
+        const k = keyOf(r.ep,r.map,r.channel);
+        state.entries[k] = {
+          ...r,
+          checked: state.entries[k]?.checked || false, // 勾選僅本地
+          alertedBefore: state.entries[k]?.alertedBefore || false,
+          alertedFinal: state.entries[k]?.alertedFinal || false
+        };
+        // 如果 UPDATE 改變了 key（理論上不會，但以防萬一）
+        if(payload.old){
+          const ko = keyOf(payload.old.ep, payload.old.map, payload.old.channel);
+          if(ko !== k){ delete state.entries[ko]; }
+        }
+      } else if (e === 'DELETE') {
+        const r = payload.old;
+        delete state.entries[keyOf(r.ep,r.map,r.channel)];
+      }
+      save(); render();
+      scheduleResync(); // 保險：合併後做一次輕量 resync
     })
-    .on('postgres_changes', {event:'UPDATE', schema:'public', table:'entries'}, payload => {
-      const r=payload.new; const key=keyOf(r.ep,r.map,r.channel); state.entries[key]=r; save(); render();
-    })
-    .on('postgres_changes', {event:'DELETE', schema:'public', table:'entries'}, payload => {
-      const r=payload.old; const key=keyOf(r.ep,r.map,r.channel); delete state.entries[key]; save(); render();
-    })
-    .subscribe();
+    .subscribe((status)=>{
+      console.log('Realtime status:', status);
+      if(rtStatus){ rtStatus.textContent = `Realtime: ${status}`; }
+    });
 }
+
 async function pullAll(){
-  const { data } = await sb.from('entries').select('*');
-  state.entries={}; (data||[]).forEach(r=>{ state.entries[keyOf(r.ep,r.map,r.channel)]=r; });
+  const { data, error } = await sb.from('entries').select('*');
+  if(error){ console.error('pullAll error', error); return; }
+  // 保留每列本地的 checked/alerted 標記
+  const cur = state.entries;
+  state.entries={};
+  (data||[]).forEach(r=>{
+    const k = keyOf(r.ep,r.map,r.channel);
+    state.entries[k]={
+      ...r,
+      checked: cur[k]?.checked || false,
+      alertedBefore: cur[k]?.alertedBefore || false,
+      alertedFinal: cur[k]?.alertedFinal || false
+    };
+  });
   save(); render();
 }
 
-/** ========= 密碼驗證（方案 C / RPC） ========= */
+/** ========= 密碼驗證（RPC） ========= */
 async function gate(){
   const overlay=document.getElementById('pwOverlay');
   const input=document.getElementById('pwInput');
@@ -480,7 +523,6 @@ async function gate(){
   const msg=document.getElementById('pwMsg');
 
   function setMsg(t){ msg.textContent=t||''; }
-
   overlay.classList.remove('hidden'); input.value=''; setMsg('（密碼由伺服器驗證）');
 
   async function tryCheck(){
@@ -496,7 +538,7 @@ async function gate(){
   }
   okBtn.onclick=tryCheck;
   input.onkeypress=(e)=>{ if(e.key==='Enter') tryCheck(); };
-  cancelBtn.onclick=()=>{ overlay.classList.add('hidden'); }; // 如要強制必填，可改成：location.reload();
+  cancelBtn.onclick=()=>{ overlay.classList.add('hidden'); };
 }
 
 /** ========= 啟動 ========= */
@@ -505,7 +547,7 @@ async function gate(){
   initSelectors();
   epSel.addEventListener('change', refreshMaps);
   mapSel.addEventListener('change', refreshLevel);
-  await gate(); // 驗證通過後才會 startRealtime
+  await gate(); // 驗證成功後才 startRealtime
 })();
 </script>
 </body>
