@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>麥當勞單點專用_多人共用版v1（Web）</title>
+<title>麥當勞單點專用_多人共用版 v1（Web）</title>
 <style>
-  :root{--bg:#0b0f14;--card:#111827;--muted:#6b7280;--text:#e5e7eb;--accent:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--border:#1f2937}
+  :root{--bg:#0b0f14;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--border:#1f2937}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial}
   .container{max-width:1100px;margin:24px auto;padding:0 16px}
-  h1{font-size:22px;margin:0 0 16px}
-  .row{display:flex;gap:12px;flex-wrap:wrap}
+  h1{font-size:20px;margin:0 0 14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
-  .toolbar .btn, .btn{background:#1f2937;border:1px solid var(--border);color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
-  .toolbar .btn:hover, .btn:hover{border-color:#334155}
+  .toolbar .btn,.btn{background:#1f2937;border:1px solid #2b3446;color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
+  .toolbar .btn:hover,.btn:hover{border-color:#3a4a66}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap}
   .sound{display:flex;align-items:center;gap:8px;color:var(--muted)}
-  select,input[type="text"],input[type="number"],input[type="password"]{background:#0b1220;border:1px solid #22324a;color:#e5e7eb;padding:8px;border-radius:10px}
-  input[type="number"]{width:80px;text-align:center}
+  select,input[type="text"],input[type="number"]{background:#0b1220;border:1px solid #22324a;color:#e5e7eb;padding:8px;border-radius:10px}
+  input[type="number"]{width:86px;text-align:center}
   table{width:100%;border-collapse:collapse;margin-top:10px}
   th,td{padding:10px;border-bottom:1px solid var(--border);text-align:center}
   th{color:#cbd5e1;font-weight:600}
@@ -28,41 +28,52 @@
   .footer{margin-top:8px;font-size:12px;color:#94a3b8}
   .hidden{display:none!important}
 
+  /* 遮罩／對話框（密碼 & 分流後移） */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50}
-  .modal{width:420px;max-width:92vw;background:#121826;border:1px solid #1f2a44;border-radius:14px;padding:18px}
+  .modal{width:360px;max-width:92vw;background:#121826;border:1px solid #1f2a44;border-radius:14px;padding:18px}
   .modal h3{margin:0 0 10px;font-size:18px}
   .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
   .modal button{background:#1f2937;border:1px solid var(--border);color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
   .modal button.primary{background:#2563eb;border-color:#2563eb}
 
-  .grid{display:grid;grid-template-columns:repeat(5, minmax(0,1fr));gap:10px}
-  @media (max-width:900px){.grid{grid-template-columns:1fr 1fr}}
-
-  .copy-toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#111827;border:1px solid #334155;padding:8px 12px;border-radius:10px;color:#cbd5e1;opacity:0;transition:opacity .25s}
-  .copy-toast.show{opacity:1}
-
-  .btn.small{padding:2px 6px;font-size:12px}
+  /* 倒數時間控制 */
   .time-ctrl{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
   .time-unit{display:flex;align-items:center;gap:8px}
-  .time-col{display:flex;flex-direction:column;gap:4px}
+  .time-col{display:flex;flex-direction:column;gap:6px}
+  .btn.small{padding:2px 6px;font-size:12px}
   .btn.small.square{width:38px;padding:6px 0;font-size:12px;text-align:center}
 
-  tr.rowMap { border-left:6px solid transparent; }
-  .mapBadge { display:inline-flex; align-items:center; gap:8px; justify-content:center }
-  .mapDot { width:10px; height:10px; border-radius:50%; display:inline-block }
+  /* 地圖色條與整列底色 */
+  tr.rowMap{ border-left:6px solid transparent; }
+  .mapBadge{ display:inline-flex; align-items:center; gap:8px; justify-content:center }
+  .mapDot{ width:10px;height:10px;border-radius:50%; display:inline-block }
 
-  .key-in.green{border:1px solid #3b8d3b;background:rgba(16,61,16,.25)}
+  /* 整列淡色背景 */
+  tr.rowMap[data-soft]{ background: var(--row-soft); }
 
-  td.tdTime { text-align:right }
-  .timeWrap{display:flex;align-items:center;justify-content:flex-end;gap:8px}
-  .timeStrike{ text-decoration: line-through; opacity:.65 }
+  /* 密碼輸入提示 */
+  .pw-msg{margin-top:8px;font-size:12px;color:#9fb2d1}
 </style>
 </head>
 <body>
 
+<!-- 密碼遮罩（方案 C：Supabase RPC） -->
+<div id="pwOverlay" class="overlay">
+  <div class="modal">
+    <h3>密碼驗證</h3>
+    <p class="muted" style="margin:6px 0 10px">請輸入本週密碼才能進入（伺服器驗證）。</p>
+    <input id="pwInput" type="password" placeholder="本週密碼" style="width:100%">
+    <div class="actions">
+      <button id="pwCancel">離開</button>
+      <button id="pwOk" class="primary">確定</button>
+    </div>
+    <div id="pwMsg" class="pw-msg"></div>
+  </div>
+</div>
+
 <!-- 分流後移對話框 -->
 <div id="shiftOverlay" class="overlay hidden">
-  <div class="modal">
+  <div class="modal" style="width:420px">
     <h3>分流後移</h3>
     <div class="muted" style="margin:6px 0 4px">章節 (EP)</div>
     <select id="shiftEp" style="width:100%"></select>
@@ -82,10 +93,10 @@
 </div>
 
 <div class="container">
-  <h1>麥當勞單點專用_多人共用版v1（Web）</h1>
+  <h1>麥當勞單點專用_多人共用版 v1（Web）</h1>
 
   <div class="card">
-    <div class="grid">
+    <div class="grid" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">
       <div>
         <div class="muted" style="margin-bottom:6px">章節 (EP)</div>
         <select id="ep"></select>
@@ -107,48 +118,43 @@
         <div class="time-ctrl">
           <div class="time-unit">
             <div class="time-col">
-              <button class="btn small square" data-target="hh" data-delta="-1">-1</button>
-              <button class="btn small square" data-target="hh" data-delta="-5">-5</button>
+              <button class="btn small square plusminus" data-target="hh" data-delta="-1">-1</button>
+              <button class="btn small square plusminus" data-target="hh" data-delta="-5">-5</button>
             </div>
             <input id="hh" type="number" value="0" min="0" max="99" />
             <div class="time-col">
-              <button class="btn small square" data-target="hh" data-delta="1">+1</button>
-              <button class="btn small square" data-target="hh" data-delta="5">+5</button>
+              <button class="btn small square plusminus" data-target="hh" data-delta="1">+1</button>
+              <button class="btn small square plusminus" data-target="hh" data-delta="5">+5</button>
             </div>
             <span class="muted">時</span>
           </div>
+
           <div class="time-unit">
             <div class="time-col">
-              <button class="btn small square" data-target="mm" data-delta="-1">-1</button>
-              <button class="btn small square" data-target="mm" data-delta="-5">-5</button>
+              <button class="btn small square plusminus" data-target="mm" data-delta="-1">-1</button>
+              <button class="btn small square plusminus" data-target="mm" data-delta="-5">-5</button>
             </div>
             <input id="mm" type="number" value="0" min="0" max="59" />
             <div class="time-col">
-              <button class="btn small square" data-target="mm" data-delta="1">+1</button>
-              <button class="btn small square" data-target="mm" data-delta="5">+5</button>
+              <button class="btn small square plusminus" data-target="mm" data-delta="1">+1</button>
+              <button class="btn small square plusminus" data-target="mm" data-delta="5">+5</button>
             </div>
             <span class="muted">分</span>
           </div>
+
           <div class="time-unit">
             <div class="time-col">
-              <button class="btn small square" data-target="ss" data-delta="-1">-1</button>
-              <button class="btn small square" data-target="ss" data-delta="-5">-5</button>
+              <button class="btn small square plusminus" data-target="ss" data-delta="-1">-1</button>
+              <button class="btn small square plusminus" data-target="ss" data-delta="-5">-5</button>
             </div>
             <input id="ss" type="number" value="0" min="0" max="59" />
             <div class="time-col">
-              <button class="btn small square" data-target="ss" data-delta="1">+1</button>
-              <button class="btn small square" data-target="ss" data-delta="5">+5</button>
+              <button class="btn small square plusminus" data-target="ss" data-delta="1">+1</button>
+              <button class="btn small square plusminus" data-target="ss" data-delta="5">+5</button>
             </div>
             <span class="muted">秒</span>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:12px;align-items:center">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button id="genKeyBtn" class="btn">產生紀錄</button>
-        <input id="exportOut" class="key-in green" type="text" placeholder="生成的金鑰會顯示在這裡（自動複製）" style="width:420px" readonly>
       </div>
     </div>
 
@@ -190,257 +196,317 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
-    <div class="footer">依時間（實際到點）排序；相同「章節+地圖+分流」新增第二次會覆蓋第一次；資料即時同步（Supabase Realtime）。</div>
+    <div class="footer">依時間（實際到點）排序；相同「章節+地圖+分流」新增第二次會覆蓋第一次；資料儲存在瀏覽器的 localStorage；主資料來自 Supabase。</div>
   </div>
 </div>
 
-<div id="toast" class="copy-toast">已複製到剪貼簿！</div>
-
-<!-- ✅ 使用 UMD 版本，保證有 window.supabase -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" defer></script>
-
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  // 確保 SDK 已載入
-  const waitSupabase = () => new Promise((resolve) => {
-    if (window.supabase) return resolve();
-    const timer = setInterval(() => {
-      if (window.supabase){ clearInterval(timer); resolve(); }
-    }, 10);
-  });
+/** ========= 專案連線 ========= */
+const SUPABASE_URL = "https://pvgisrubrsitesqpiimr.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2Z2lzcnVicnNpdGVzcXBpaW1yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDExNjMsImV4cCI6MjA3MzA3NzE2M30.TQh3vDTpUkDJA58wA7EN3msFTHhz0c72TEXCl1Lg1zc";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  (async function main(){
-    await waitSupabase();
+/** ========= 靜態資料 ========= */
+const EP_MAP_LEVEL = {
+  "EP1": {"夏奧雷伊西邊森林":"Lv.1","夏奧雷伊東邊森林":"Lv.3","蓮帕拉沙池塘":"Lv.5","夏奧雷伊礦山村莊":"Lv.7","水晶礦山":"Lv.9"},
+  "EP2": {"斯拉屋塔斯峽谷":"Lv.10","凱利高原":"Lv.11","奈普里塔斯懸崖":"Lv.12","泰內花園":"Lv.13","泰內聖堂地下1層":"Lv.15","泰內聖堂上1層":"Lv.17","泰內聖堂上2層":"Lv.19"},
+  "EP3": {"庫魯森林":"Lv.20","克尼多斯森林":"Lv.21","達旦森林":"Lv.22","諾巴哈公會所":"Lv.24","諾巴哈別館":"Lv.26","諾巴哈本院":"Lv.28"},
+  "EP4": {"貝雅山谷":"Lv.30","比爾塔溪谷":"Lv.31","科博爾特森林":"Lv.32","賽提尼山溝":"Lv.34","培爾克神殿":"Lv.36","安森塔水源地":"Lv.38"},
+  "EP5": {"卡羅利斯泉水":"Lv.40","萊塔斯小溪":"Lv.42","德慕蘭佃農村":"Lv.44","德慕蘭莊園":"Lv.46","德慕蘭外城":"Lv.48"},
+  "EP6": {"達伊納養蜂地":"Lv.50","比爾那森林":"Lv.51","烏奇斯耕作地":"Lv.52","春光樹林":"Lv.53","關口路":"Lv.55","史爾特凱拉特林":"Lv.57","克巴伊拉斯森林":"Lv.59"},
+  "EP7": {"魯卡斯高原":"Lv.60","王之高原":"Lv.61","札卡里耶爾交叉路":"Lv.62","王陵1層":"Lv.64","王陵2層":"Lv.66","王陵3層":"Lv.68"},
+  "EP8": {"水路橋地區":"Lv.70","魔族收監所第1區":"Lv.71","魔族收監所第3區":"Lv.72","魔族收監所第4區":"Lv.73","魔族收監所第5區":"Lv.74"},
+  "EP9": {"女神的古院":"Lv.75","佩迪米安外城":"Lv.76","魔法師之塔1層":"Lv.77","魔法師之塔2層":"Lv.78","魔法師之塔3層":"Lv.79"},
+  "EP10":{"大教堂懺悔路":"Lv.80","大教堂正殿":"Lv.81","大教堂大迴廊":"Lv.82","大教堂至聖所":"Lv.83"},
+};
+const CHANNELS = Array.from({length:10}, (_,i)=>String(i+1));
 
-    const SUPABASE_URL = "https://pvgisrubrsitesqpiimr.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2Z2lzcnVicnNpdGVzcXBpaW1yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDExNjMsImV4cCI6MjA3MzA3NzE2M30.TQh3vDTpUkDJA58wA7EN3msFTHhz0c72TEXCl1Lg1zc";
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/** ========= 狀態 ========= */
+const state = {
+  entries: {},  // key `${ep}||${map}||${channel}` → row
+  soundEnabled: true,
+  alertBeforeMin: 0,
+};
 
-    /* ===== 其餘程式（與上一版相同） ===== */
+/** ========= 小工具 ========= */
+const pad2 = n => String(n).padStart(2,"0");
+const fmtTime = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+function fmtDisplayTime(target){
+  const now=new Date();
+  const base = fmtTime(target);
+  const a=new Date(now); a.setHours(0,0,0,0);
+  const b=new Date(target); b.setHours(0,0,0,0);
+  const dd=Math.floor((b-a)/86400000);
+  return dd===0?base:`${base} (+${dd}d)`;
+}
+function keyOf(ep,map,channel){return `${ep}||${map}||${channel}`;}
 
-    const EP_MAP_LEVEL = {
-      "EP1": {"夏奧雷伊西邊森林":"Lv.1","夏奧雷伊東邊森林":"Lv.3","蓮帕拉沙池塘":"Lv.5","夏奧雷伊礦山村莊":"Lv.7","水晶礦山":"Lv.9"},
-      "EP2": {"斯拉屋塔斯峽谷":"Lv.10","凱利高原":"Lv.11","奈普里塔斯懸崖":"Lv.12","泰內花園":"Lv.13","泰內聖堂地下1層":"Lv.15","泰內聖堂上1層":"Lv.17","泰內聖堂上2層":"Lv.19"},
-      "EP3": {"庫魯森林":"Lv.20","克尼多斯森林":"Lv.21","達旦森林":"Lv.22","諾巴哈公會所":"Lv.24","諾巴哈別館":"Lv.26","諾巴哈本院":"Lv.28"},
-      "EP4": {"貝雅山谷":"Lv.30","比爾塔溪谷":"Lv.31","科博爾特森林":"Lv.32","賽提尼山溝":"Lv.34","培爾克神殿":"Lv.36","安森塔水源地":"Lv.38"},
-      "EP5": {"卡羅利斯泉水":"Lv.40","萊塔斯小溪":"Lv.42","德慕蘭佃農村":"Lv.44","德慕蘭莊園":"Lv.46","德慕蘭外城":"Lv.48"},
-      "EP6": {"達伊納養蜂地":"Lv.50","比爾那森林":"Lv.51","烏奇斯耕作地":"Lv.52","春光樹林":"Lv.53","關口路":"Lv.55","史爾特凱拉特林":"Lv.57","克巴伊拉斯森林":"Lv.59"},
-      "EP7": {"魯卡斯高原":"Lv.60","王之高原":"Lv.61","札卡里耶爾交叉路":"Lv.62","王陵1層":"Lv.64","王陵2層":"Lv.66","王陵3層":"Lv.68"},
-      "EP8": {"水路橋地區":"Lv.70","魔族收監所第1區":"Lv.71","魔族收監所第3區":"Lv.72","魔族收監所第4區":"Lv.73","魔族收監所第5區":"Lv.74"},
-      "EP9": {"女神的古院":"Lv.75","佩迪米安外城":"Lv.76","魔法師之塔1層":"Lv.77","魔法師之塔2層":"Lv.78","魔法師之塔3層":"Lv.79"},
-      "EP10":{"大教堂懺悔路":"Lv.80","大教堂正殿":"Lv.81","大教堂大迴廊":"Lv.82","大教堂至聖所":"Lv.83"},
-    };
-    const CHANNELS = Array.from({length:10},(_,i)=>String(i+1));
+function strHash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return Math.abs(h);}
+function mapColor(name){
+  const PA=[12,42,72,102,132,162,192,222,252,282,312,342];
+  const idx=Math.abs(strHash(name))%PA.length, h=PA[idx];
+  const alt=(Math.abs(strHash(name)>>4)%2)===0;
+  const sStrong=72,lStrong=alt?42:35;
+  const sSoft=70,lSoft=alt?30:26,ALPHA=.22;
+  return { bg:`hsl(${h}deg ${sStrong}% ${lStrong}%)`, soft:`hsla(${h}, ${sSoft}%, ${lSoft}%, ${ALPHA})` };
+}
+function beep(){
+  if(!state.soundEnabled) return;
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();const g=ctx.createGain();
+    osc.type='sine';osc.frequency.value=880;osc.connect(g);g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.2,ctx.currentTime+0.01);
+    osc.start();setTimeout(()=>{osc.stop();ctx.close();},200);
+  }catch(e){}
+}
 
-    const pad2 = n => String(n).padStart(2,"0");
-    const fmtTime = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-    function fmtDisplayTime(target){
-      const now = new Date();
-      const base = fmtTime(target);
-      const startA = new Date(now); startA.setHours(0,0,0,0);
-      const startB = new Date(target); startB.setHours(0,0,0,0);
-      const dayDiff = Math.floor((startB - startA) / 86400000);
-      return dayDiff===0 ? base : `${base} (+${dayDiff}d)`;
-    }
-    function strHash(s){ let h=0; for(let i=0;i<s.length;i++){ h=((h<<5)-h + s.charCodeAt(i))|0; } return Math.abs(h); }
-    function mapColor(mapName){
-      const PALETTE=[12,42,72,102,132,162,192,222,252,282,312,342];
-      const idx=Math.abs(strHash(mapName))%PALETTE.length;
-      const h=PALETTE[idx];
-      const alt=(Math.abs(strHash(mapName)>>4)%2)===0;
-      const sStrong=72,lStrong=alt?42:35;
-      const sSoft=70,lSoft=alt?30:26,ALPHA=.22;
-      return { bg:`hsl(${h}deg, ${sStrong}%, ${lStrong}%)`, soft:`hsla(${h}, ${sSoft}%, ${lSoft}%, ${ALPHA})` };
-    }
-    function toast(msg="已複製到剪貼簿！"){
-      const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
-      setTimeout(()=>t.classList.remove('show'),1000);
-    }
+/** ========= 本地存取 ========= */
+const LS_KEY="tomsboss_web_entries";
+const LS_PREF="tomsboss_web_pref";
+function save(){
+  localStorage.setItem(LS_KEY, JSON.stringify(state.entries));
+  localStorage.setItem(LS_PREF, JSON.stringify({soundEnabled:state.soundEnabled, alertBeforeMin:state.alertBeforeMin}));
+}
+function load(){
+  try{const d=JSON.parse(localStorage.getItem(LS_KEY)||"{}"); if(d&&typeof d==="object") state.entries=d;}catch{}
+  try{const p=JSON.parse(localStorage.getItem(LS_PREF)||"{}"); if(typeof p?.soundEnabled==="boolean") state.soundEnabled=p.soundEnabled; if(typeof p?.alertBeforeMin==="number") state.alertBeforeMin=p.alertBeforeMin;}catch{}
+}
 
-    let rowsCache = [];
+/** ========= UI 綁定 ========= */
+const epSel=document.getElementById('ep');
+const mapSel=document.getElementById('map');
+const levelInp=document.getElementById('level');
+const chSel=document.getElementById('channel');
+const hhInp=document.getElementById('hh');
+const mmInp=document.getElementById('mm');
+const ssInp=document.getElementById('ss');
+const tbody=document.getElementById('tbody');
+const soundToggle=document.getElementById('soundToggle');
+const alertBefore=document.getElementById('alertBefore');
 
-    const epSel = document.getElementById('ep');
-    const mapSel = document.getElementById('map');
-    const levelInp = document.getElementById('level');
-    const chSel = document.getElementById('channel');
-    const hhInp = document.getElementById('hh');
-    const mmInp = document.getElementById('mm');
-    const ssInp = document.getElementById('ss');
-    const tbody = document.getElementById('tbody');
+/* 分流後移 */
+const shiftOverlay=document.getElementById('shiftOverlay');
+const shiftEp=document.getElementById('shiftEp');
+const shiftMap=document.getElementById('shiftMap');
+const shiftAt=document.getElementById('shiftAt');
+const shiftMsg=document.getElementById('shiftMsg');
 
-    const shiftOverlay = document.getElementById('shiftOverlay');
-    const shiftEp = document.getElementById('shiftEp');
-    const shiftMap = document.getElementById('shiftMap');
-    const shiftAt = document.getElementById('shiftAt');
-    const shiftMsg = document.getElementById('shiftMsg');
+/** 初始化 selector */
+function initSelectors(){
+  epSel.innerHTML = Object.keys(EP_MAP_LEVEL).map(ep=>`<option value="${ep}">${ep}</option>`).join("");
+  chSel.innerHTML = CHANNELS.map(c=>`<option value="${c}">${c}</option>`).join("");
+  alertBefore.value = String(state.alertBeforeMin||0);
+  soundToggle.checked = !!state.soundEnabled;
+  refreshMaps();
+  shiftEp.innerHTML = epSel.innerHTML;
+  refreshShiftMaps();
+}
+function refreshMaps(){
+  const ep=epSel.value, maps=Object.keys(EP_MAP_LEVEL[ep]||{});
+  mapSel.innerHTML = maps.map(m=>`<option value="${m}">${m}</option>`).join("");
+  refreshLevel();
+}
+function refreshLevel(){
+  const ep=epSel.value, map=mapSel.value;
+  levelInp.value = (EP_MAP_LEVEL[ep]||{})[map] || "";
+}
+function refreshShiftMaps(){
+  const ep=shiftEp.value, maps=Object.keys(EP_MAP_LEVEL[ep]||{});
+  shiftMap.innerHTML = maps.map(m=>`<option value="${m}">${m}</option>`).join("");
+}
 
-    const genKeyBtn = document.getElementById('genKeyBtn');
-    const exportOut = document.getElementById('exportOut');
+/** ========= 表格 ========= */
+function render(){
+  const rows = Object.values(state.entries).sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
+  tbody.innerHTML = rows.map(row=>{
+    const t=new Date(row.target_iso), now=new Date();
+    let cls=""; if(now>=t) cls="timeDue"; else if((t-now)<=10*60*1000) cls="timeSoon";
+    const {bg,soft}=mapColor(row.map);
+    const key=keyOf(row.ep,row.map,row.channel);
+    const strike=row.dead?"timeStrike":"";
+    return `<tr class="rowMap" data-key="${key}" style="border-left-color:${bg}; --row-soft:${soft}" data-soft>
+      <td><input type="checkbox" class="chk" ${row.checked?'checked':''}></td>
+      <td>${row.ep}</td>
+      <td><span class="mapBadge"><span class="mapDot" style="background:${bg}"></span>${row.map}</span></td>
+      <td><span class="pill">${row.level||''}</span></td>
+      <td>${row.channel}</td>
+      <td>
+        <div class="timeWrap" style="display:flex;align-items:center;justify-content:flex-end;gap:8px">
+          <span class="${cls} ${strike}">${fmtDisplayTime(t)}</span>
+          <button class="btn small dead-btn">${row.dead?'取消':'標註死亡'}</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
 
-    function render(){
-      const rows = [...rowsCache].sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
-      tbody.innerHTML = rows.map(row=>{
-        const target = new Date(row.target_iso);
-        const now = new Date();
-        let cls = "";
-        if (now >= target) cls = "timeDue";
-        else if ((target - now) <= 10*60*1000) cls = "timeSoon";
+/** ========= 新增/刪除/複製 ========= */
+function clamp(v,lo,hi){v=parseInt(v,10); if(isNaN(v)) v=0; return Math.max(lo,Math.min(hi,v));}
 
-        const { bg, soft } = mapColor(row.map);
-        const rowStyle = `border-left-color:${bg}; background:${soft}`;
-        const timeStr = fmtDisplayTime(target);
-        const strikeCls = row.dead ? "timeStrike" : "";
+document.getElementById('addBtn').addEventListener('click', async ()=>{
+  const ep=epSel.value, map=mapSel.value, level=levelInp.value||"", ch=chSel.value;
+  const h=clamp(hhInp.value,0,99), m=clamp(mmInp.value,0,59), s=clamp(ssInp.value,0,59);
+  if(!ep||!map||!ch) return alert('請完整選擇 EP / 地圖 / 分流');
+  if(h===0&&m===0&&s===0) return alert('倒數時間不可為 0');
 
-        return `<tr class="rowMap" data-id="${row.id}" style="${rowStyle}">
-          <td><input type="checkbox" class="chk"></td>
-          <td>${row.ep}</td>
-          <td><span class="mapBadge"><span class="mapDot" style="background:${bg}"></span>${row.map}</span></td>
-          <td><span class="pill">${row.level||""}</span></td>
-          <td>${row.channel}</td>
-          <td class="tdTime">
-            <div class="timeWrap">
-              <span class="${cls} ${strikeCls}">${timeStr}</span>
-              <button class="btn small dead-btn">${row.dead ? '取消' : '標註死亡'}</button>
-            </div>
-          </td>
-        </tr>`;
-      }).join("");
-    }
+  const target=new Date(Date.now()+(h*3600+m*60+s)*1000).toISOString();
+  const row={ ep, map, level, channel: ch, target_iso: target, checked:false, dead:false, updated_at:new Date().toISOString() };
 
-    async function fetchAll(){
-      const { data, error } = await sb.from('entries').select('*').order('target_iso', { ascending: true });
-      if (!error && Array.isArray(data)){ rowsCache = data; render(); }
-    }
-
-    async function upsertRow(ep, map, level, channel, secondsFromNow){
-      const target = new Date(Date.now() + secondsFromNow*1000).toISOString();
-      const payload = { ep, map, level, channel, target_iso: target, dead:false, checked:false };
-      const { error } = await sb.from('entries').upsert(payload, { onConflict: 'ep,map,channel' }).select();
-      if (error) alert('寫入失敗：' + error.message);
-    }
-    async function setDead(id, dead){ await sb.from('entries').update({ dead }).eq('id', id); }
-    async function deleteChecked(){
-      const ids = [...tbody.querySelectorAll('tr')].filter(tr=>tr.querySelector('.chk')?.checked).map(tr=>tr.dataset.id);
-      if (!ids.length) { alert('沒有勾選'); return; }
-      await sb.from('entries').delete().in('id', ids);
-    }
-    async function deleteAll(){
-      if (!confirm('確定清除全部？')) return;
-      await sb.from('entries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    }
-    async function shiftChannels(ep, map, at){
-      const { data, error } = await sb.from('entries').select('*').eq('ep', ep).eq('map', map);
-      if (error){ shiftMsg.textContent = '讀取失敗：'+error.message; return; }
-      const targets = (data||[])
-        .map(r => ({ ...r, ch: parseInt(r.channel,10)||0 }))
-        .filter(r => r.ch >= at)
-        .sort((a,b)=> b.ch - a.ch);
-      if (!targets.length){ shiftMsg.textContent = '沒有可後移的分流。'; return; }
-      for (const row of targets){
-        const newChannel = String(row.ch + 1);
-        const { error: e1 } = await sb.from('entries').update({ channel: newChannel }).eq('id', row.id);
-        if (e1){ shiftMsg.textContent = '更新失敗：'+e1.message; return; }
-      }
-      shiftMsg.textContent = `已將 ${ep} / ${map} 從分流 ${at} 起全部 +1`;
-    }
-
-    function initSelectors(){
-      epSel.innerHTML = Object.keys(EP_MAP_LEVEL).map(ep=>`<option value="${ep}">${ep}</option>`).join("");
-      document.getElementById('channel').innerHTML = Array.from({length:10},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join("");
-      refreshMaps();
-      shiftEp.innerHTML = epSel.innerHTML;
-      refreshShiftMaps();
-    }
-    function refreshMaps(){
-      const ep = epSel.value || Object.keys(EP_MAP_LEVEL)[0];
-      const maps = Object.keys(EP_MAP_LEVEL[ep]||{});
-      mapSel.innerHTML = maps.map(m=>`<option value="${m}">${m}</option>`).join("");
-      refreshLevel();
-    }
-    function refreshLevel(){
-      const ep=epSel.value, map=mapSel.value;
-      levelInp.value = (EP_MAP_LEVEL[ep]||{})[map] || "";
-    }
-    function refreshShiftMaps(){
-      const ep = shiftEp.value;
-      const maps = Object.keys(EP_MAP_LEVEL[ep]||{});
-      shiftMap.innerHTML = maps.map(m=>`<option value="${m}">${m}</option>`).join("");
-    }
-
-    document.getElementById('addBtn').addEventListener('click', async ()=>{
-      const ep = epSel.value, map = mapSel.value, level = levelInp.value || "", ch = chSel.value;
-      const h = Math.max(0, Math.min(99, parseInt(hhInp.value,10)||0));
-      const m = Math.max(0, Math.min(59, parseInt(mmInp.value,10)||0));
-      const s = Math.max(0, Math.min(59, parseInt(ssInp.value,10)||0));
-      if (!ep || !map || !ch){ alert('請完整選擇 EP / 地圖 / 分流'); return; }
-      if (h===0 && m===0 && s===0){ alert('倒數時間不可為 0'); return; }
-      await upsertRow(ep, map, level, ch, h*3600 + m*60 + s);
-    });
-    document.getElementById('delCheckedBtn').addEventListener('click', deleteChecked);
-    document.getElementById('delAllBtn').addEventListener('click', deleteAll);
-
-    tbody.addEventListener('click', async (e)=>{
-      if (e.target.classList.contains('dead-btn')){
-        const tr = e.target.closest('tr'); const id = tr?.dataset?.id;
-        if (!id) return;
-        const row = rowsCache.find(r=>r.id===id);
-        await setDead(id, !row?.dead);
-      }
-    });
-    document.addEventListener('click', (e)=>{
-      const btn = e.target.closest('button[data-target]'); if (!btn) return;
-      const id = btn.getAttribute('data-target');
-      const delta = parseInt(btn.getAttribute('data-delta'),10) || 0;
-      const input = document.getElementById(id); if (!input) return;
-      let v = parseInt(input.value,10) || 0; v += delta;
-      if (id === 'hh') v = Math.max(0, Math.min(99, v));
-      if (id === 'mm' || id === 'ss') v = Math.max(0, Math.min(59, v));
-      input.value = v;
-    });
-
-    epSel.addEventListener('change', refreshMaps);
-    mapSel.addEventListener('change', refreshLevel);
-
-    document.getElementById('shiftBtn').addEventListener('click', ()=>{
-      shiftEp.value = epSel.value; refreshShiftMaps(); shiftMap.value = mapSel.value;
-      shiftAt.value = '1'; shiftMsg.textContent = ''; shiftOverlay.classList.remove('hidden');
-    });
-    document.getElementById('shiftCancel').addEventListener('click', ()=>shiftOverlay.classList.add('hidden'));
-    shiftEp.addEventListener('change', refreshShiftMaps);
-    document.getElementById('shiftOk').addEventListener('click', async ()=>{
-      const ep = shiftEp.value, map = shiftMap.value, at = parseInt(shiftAt.value,10) || 1;
-      shiftMsg.textContent = '處理中…'; await shiftChannels(ep, map, at);
-      setTimeout(()=>shiftOverlay.classList.add('hidden'), 600);
-    });
-
-    genKeyBtn.addEventListener('click', async ()=>{
-      const { data, error } = await sb.from('entries').select('*');
-      if (error){ alert('讀取失敗：'+error.message); return; }
-      const CRC32_TABLE = (()=>{let c,t=[];for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++){c=((c&1)?(0xEDB88320^(c>>>1)):(c>>>1));}t[n]=c>>>0;}return t;})();
-      function crc32(str){ let crc=0^(-1); for(let i=0;i<str.length;i++){ crc=(crc>>>8) ^ CRC32_TABLE[(crc^str.charCodeAt(i)) & 0xFF]; } return ((crc^(-1))>>>0).toString(16).padStart(8,'0'); }
-      function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
-      const payload = { v:1, ts:Date.now(), entries:data };
-      const json = JSON.stringify(payload);
-      const b64 = b64encode(json);
-      const sig = crc32(b64);
-      const token = `TB1:${sig}:${b64}`;
-      exportOut.value = token; navigator.clipboard.writeText(token).then(()=>toast('已產生並複製金鑰！'));
-    });
-
-    sb.channel('realtime:public:entries')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, () => fetchAll())
-      .subscribe();
-
-    function initSelectors(){
-      epSel.innerHTML = Object.keys(EP_MAP_LEVEL).map(ep=>`<option value="${ep}">${ep}</option>`).join("");
-      chSel.innerHTML = CHANNELS.map(c=>`<option value="${c}">${c}</option>`).join("");
-      refreshMaps(); shiftEp.innerHTML = epSel.innerHTML; refreshShiftMaps();
-    }
-
-    initSelectors();
-    await fetchAll();
-  })();
+  // Upsert 到 Supabase（唯一鍵：ep+map+channel）
+  await sb.from('entries').upsert(row, { onConflict: 'ep,map,channel' });
 });
+
+document.getElementById('copyCheckedBtn').addEventListener('click', ()=>{
+  const rows=Object.values(state.entries).filter(r=>r.checked).sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
+  if(!rows.length) return alert('沒有勾選任何列');
+  const text=rows.map(r=>{
+    const lvl=String(r.level||"").replace(/^Lv\.?/i,''); const t=fmtTime(new Date(r.target_iso));
+    return `${r.ep}-${lvl}-${r.channel}-${t}`;
+  }).join('\n');
+  navigator.clipboard.writeText(text);
+});
+document.getElementById('copyAllBtn').addEventListener('click', ()=>{
+  const rows=Object.values(state.entries).sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
+  if(!rows.length) return alert('目前清單為空');
+  const text=rows.map(r=>{
+    const lvl=String(r.level||"").replace(/^Lv\.?/i,''); const t=fmtTime(new Date(r.target_iso));
+    return `${r.ep}-${lvl}-${r.channel}-${t}`;
+  }).join('\n');
+  navigator.clipboard.writeText(text);
+});
+document.getElementById('delCheckedBtn').addEventListener('click', async ()=>{
+  const keys=Object.values(state.entries).filter(v=>v.checked).map(v=>({ep:v.ep,map:v.map,channel:v.channel}));
+  if(!keys.length) return alert('沒有勾選任何列');
+  for(const k of keys){ await sb.from('entries').delete().eq('ep',k.ep).eq('map',k.map).eq('channel',k.channel); }
+});
+document.getElementById('delAllBtn').addEventListener('click', async ()=>{
+  if(!confirm('確定要清除全部嗎？')) return;
+  await sb.from('entries').delete().neq('ep','__never__');
+});
+
+/** checkbox & 標註死亡 */
+tbody.addEventListener('change', async (e)=>{
+  if(!e.target.classList.contains('chk')) return;
+  const tr=e.target.closest('tr'); const key=tr.dataset.key;
+  const row=state.entries[key]; if(!row) return;
+  await sb.from('entries').update({checked:e.target.checked, updated_at:new Date().toISOString()})
+    .eq('ep',row.ep).eq('map',row.map).eq('channel',row.channel);
+});
+tbody.addEventListener('click', async (e)=>{
+  if(!e.target.classList.contains('dead-btn')) return;
+  const tr=e.target.closest('tr'); const key=tr.dataset.key; const row=state.entries[key]; if(!row) return;
+  await sb.from('entries').update({dead: !row.dead, updated_at:new Date().toISOString()})
+    .eq('ep',row.ep).eq('map',row.map).eq('channel',row.channel);
+});
+
+/** ========= 分流後移 ========= */
+document.getElementById('shiftBtn').addEventListener('click', ()=>{
+  shiftEp.value=epSel.value; refreshShiftMaps(); shiftMap.value=mapSel.value;
+  shiftAt.value='1'; shiftMsg.textContent=''; shiftOverlay.classList.remove('hidden');
+});
+document.getElementById('shiftCancel').addEventListener('click', ()=>shiftOverlay.classList.add('hidden'));
+shiftEp.addEventListener('change', refreshShiftMaps);
+document.getElementById('shiftOk').addEventListener('click', async ()=>{
+  const ep=shiftEp.value, map=shiftMap.value; let at=parseInt(shiftAt.value,10);
+  if(!ep||!map||!at||at<1){ shiftMsg.textContent='請輸入正確的分流號（>=1）'; return; }
+  // 找出 >= at 的 rows，從大到小更新 channel+1
+  const { data } = await sb.from('entries').select('*').eq('ep',ep).eq('map',map);
+  const list=(data||[]).filter(r=>parseInt(r.channel,10)>=at).sort((a,b)=>parseInt(b.channel,10)-parseInt(a.channel,10));
+  if(!list.length){ shiftMsg.textContent='沒有可後移的分流。'; return; }
+  for(const r of list){
+    const newCh=String(parseInt(r.channel,10)+1);
+    await sb.from('entries').upsert({ ...r, channel:newCh, updated_at:new Date().toISOString() }, { onConflict:'ep,map,channel' });
+    await sb.from('entries').delete().eq('ep',r.ep).eq('map',r.map).eq('channel',r.channel);
+  }
+  shiftOverlay.classList.add('hidden');
+});
+
+/** ========= 提示音 ========= */
+soundToggle.addEventListener('change', ()=>{ state.soundEnabled=soundToggle.checked; save(); });
+alertBefore.addEventListener('change', ()=>{ state.alertBeforeMin=parseInt(alertBefore.value,10)||0; save(); });
+
+setInterval(()=>{
+  const now=new Date(); const beforeMs=(state.alertBeforeMin||0)*60*1000;
+  Object.values(state.entries).forEach(r=>{
+    const t=new Date(r.target_iso).getTime();
+    if(!r.alertedBefore && beforeMs>0 && now.getTime()>=(t-beforeMs) && now.getTime()<t){ beep(); r.alertedBefore=true; save(); }
+    if(!r.alertedFinal && now.getTime()>=t){ beep(); r.alertedFinal=true; save(); }
+  });
+  render();
+}, 1000);
+
+/** 倒數控制按鈕（修好事件代理） */
+document.addEventListener('click', e=>{
+  const btn=e.target.closest('.plusminus'); if(!btn) return;
+  const id=btn.getAttribute('data-target'); const delta=parseInt(btn.getAttribute('data-delta'),10)||0;
+  const input=document.getElementById(id); if(!input) return;
+  let v=parseInt(input.value,10)||0; v+=delta;
+  if(id==='hh') v=Math.max(0,Math.min(99,v)); else v=Math.max(0,Math.min(59,v));
+  input.value=v;
+});
+
+/** ========= Realtime 同步 ========= */
+async function startRealtime(){
+  // 先拉一次全部
+  await pullAll();
+
+  const channel = sb.channel('entries-ch')
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'entries'}, payload => {
+      const r=payload.new; const key=keyOf(r.ep,r.map,r.channel); state.entries[key]=r; save(); render();
+    })
+    .on('postgres_changes', {event:'UPDATE', schema:'public', table:'entries'}, payload => {
+      const r=payload.new; const key=keyOf(r.ep,r.map,r.channel); state.entries[key]=r; save(); render();
+    })
+    .on('postgres_changes', {event:'DELETE', schema:'public', table:'entries'}, payload => {
+      const r=payload.old; const key=keyOf(r.ep,r.map,r.channel); delete state.entries[key]; save(); render();
+    })
+    .subscribe();
+}
+async function pullAll(){
+  const { data } = await sb.from('entries').select('*');
+  state.entries={}; (data||[]).forEach(r=>{ state.entries[keyOf(r.ep,r.map,r.channel)]=r; });
+  save(); render();
+}
+
+/** ========= 密碼驗證（方案 C / RPC） ========= */
+async function gate(){
+  const overlay=document.getElementById('pwOverlay');
+  const input=document.getElementById('pwInput');
+  const okBtn=document.getElementById('pwOk');
+  const cancelBtn=document.getElementById('pwCancel');
+  const msg=document.getElementById('pwMsg');
+
+  function setMsg(t){ msg.textContent=t||''; }
+
+  overlay.classList.remove('hidden'); input.value=''; setMsg('（密碼由伺服器驗證）');
+
+  async function tryCheck(){
+    const pass=(input.value||'').trim();
+    if(!pass){ setMsg('請先輸入密碼'); input.focus(); return; }
+    okBtn.disabled=true; setMsg('驗證中…');
+    try{
+      const { data, error } = await sb.rpc('check_weekly_password', { p_pass: pass });
+      if(error){ setMsg('伺服器錯誤，稍後再試'); okBtn.disabled=false; return; }
+      if(data===true){ overlay.classList.add('hidden'); setMsg(''); await startRealtime(); }
+      else { setMsg('密碼錯誤或已過期'); okBtn.disabled=false; input.select(); }
+    }catch(e){ setMsg('網路或伺服器異常'); okBtn.disabled=false; }
+  }
+  okBtn.onclick=tryCheck;
+  input.onkeypress=(e)=>{ if(e.key==='Enter') tryCheck(); };
+  cancelBtn.onclick=()=>{ overlay.classList.add('hidden'); }; // 如要強制必填，可改成：location.reload();
+}
+
+/** ========= 啟動 ========= */
+(async function init(){
+  load();
+  initSelectors();
+  epSel.addEventListener('change', refreshMaps);
+  mapSel.addEventListener('change', refreshLevel);
+  await gate(); // 驗證通過後才會 startRealtime
+})();
 </script>
 </body>
 </html>
