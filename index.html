@@ -210,13 +210,19 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
-    <div class="footer">依時間（實際到點）排序；相同「章節+地圖+分流」新增第二次會覆蓋第一次；資料儲存在瀏覽器的 localStorage。</div>
+    <div class="footer">依時間（實際到點）排序；相同「章節+地圖+分流」新增第二次會覆蓋第一次；資料儲存在瀏覽器的 localStorage（僅偏好設定），主資料來自 Supabase。</div>
   </div>
 </div>
 
 <div id="toast" class="copy-toast">已複製到剪貼簿！</div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+/** ===== Supabase 初始化（填入你的專案 URL 與 anon key） ===== */
+const SB_URL = "https://pvgisrubrsitesqpiimr.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2Z2lzcnVicnNpdGVzcXBpaW1yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDExNjMsImV4cCI6MjA3MzA3NzE2M30.TQh3vDTpUkDJA58wA7EN3msFTHhz0c72TEXCl1Lg1zc";
+const sb = supabase.createClient(SB_URL, SB_KEY);
+
 /** ===== 常數 & 資料 ===== */
 const PASSWORD_URL = "https://script.google.com/macros/s/AKfycbyQB0VxmIukBcZRzFmRm4_xirXZIfMxNkY_h4LwAO4iiaUx3yw1JGjBZx0BO9mRvVb5/exec";
 
@@ -283,15 +289,12 @@ function mapColor(mapName){
   return { bg:`hsl(${h}deg, ${sStrong}%, ${lStrong}%)`, soft:`hsla(${h}, ${sSoft}%, ${lSoft}%, ${ALPHA})` };
 }
 
-/** ===== 本地存取 ===== */
-const LS_KEY = "tomsboss_web_entries";
+/** ===== 本地偏好設定 ===== */
 const LS_PREF = "tomsboss_web_pref";
-function save(){
-  localStorage.setItem(LS_KEY, JSON.stringify(state.entries));
+function savePref(){
   localStorage.setItem(LS_PREF, JSON.stringify({soundEnabled:state.soundEnabled, alertBeforeMin:state.alertBeforeMin}));
 }
-function load(){
-  try{ const data = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); if (data && typeof data === "object") state.entries = data; }catch{}
+function loadPref(){
   try{ const pref = JSON.parse(localStorage.getItem(LS_PREF) || "{}"); if (typeof pref?.soundEnabled === "boolean") state.soundEnabled = pref.soundEnabled; if (typeof pref?.alertBeforeMin === "number") state.alertBeforeMin = pref.alertBeforeMin; }catch{}
 }
 
@@ -313,7 +316,6 @@ const shiftEp = document.getElementById('shiftEp');
 const shiftMap = document.getElementById('shiftMap');
 const shiftAt = document.getElementById('shiftAt');
 const shiftMsg = document.getElementById('shiftMsg');
-const shiftBtn = document.getElementById('shiftBtn');
 
 /* 金鑰：只剩輸出 */
 const genKeyBtn = document.getElementById('genKeyBtn');
@@ -360,13 +362,13 @@ function render(){
     const timeStr = fmtDisplayTime(target);
     const strikeCls = row.dead ? "timeStrike" : "";
 
-    return `<tr class="rowMap" data-key="${keyOf(row.ep,row.map,row.channel)}" style="${rowStyle}">
+    return `<tr class="rowMap" data-key="${keyOf(row.ep,row.map,row.channel)}">
       <td><input type="checkbox" class="chk" ${row.checked?'checked':''}></td>
       <td>${row.ep}</td>
       <td><span class="mapBadge"><span class="mapDot" style="background:${bg}"></span>${row.map}</span></td>
       <td><span class="pill">${row.level}</span></td>
       <td>${row.channel}</td>
-      <td class="tdTime">
+      <td class="tdTime" style="border-left:6px solid ${bg}; background:${soft}">
         <div class="timeWrap">
           <span class="${cls} ${strikeCls}">${timeStr}</span>
           <button class="btn small dead-btn">${row.dead ? '取消' : '已死'}</button>
@@ -376,73 +378,161 @@ function render(){
   }).join("");
 }
 
-/** ===== 新增/複製/刪除 ===== */
-function clamp(v, lo, hi){ v = parseInt(v,10); if(isNaN(v)) v=0; return Math.max(lo, Math.min(hi, v)); }
+/** ===== 時分秒控制（修正版：明確綁定） ===== */
+function bindTimeButtons() {
+  document.querySelectorAll("button[data-target]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-target");
+      const delta = parseInt(btn.getAttribute("data-delta"), 10) || 0;
+      const input = document.getElementById(id);
+      if (!input) return;
+      let v = parseInt(input.value, 10) || 0;
+      v += delta;
+      if (id === "hh") v = Math.max(0, Math.min(99, v));
+      if (id === "mm" || id === "ss") v = Math.max(0, Math.min(59, v));
+      input.value = v;
+    });
+  });
+}
 
-document.getElementById('addBtn').addEventListener('click', ()=>{
+/** ===== 從雲端讀取最新資料 ===== */
+async function pullLatest() {
+  const { data, error } = await sb
+    .from("entries")
+    .select("*")
+    .order("target_iso", { ascending: true });
+  if (error) { console.error("pullLatest error", error); return; }
+
+  state.entries = {};
+  for (const r of data) {
+    const key = `${r.ep}||${r.map}||${r.channel}`;
+    state.entries[key] = {
+      ep: r.ep,
+      map: r.map,
+      level: r.level || "",
+      channel: r.channel,
+      targetISO: r.target_iso,
+      checked: false,
+      alertedBefore: false,
+      alertedFinal: false,
+      dead: !!r.dead
+    };
+  }
+  render();
+}
+
+/** ===== 新增/覆蓋（Upsert） ===== */
+async function upsertEntry({ ep, map, level, channel, targetISO }) {
+  const row = {
+    ep, map, level,
+    channel: String(channel),
+    target_iso: new Date(targetISO).toISOString(),
+    checked: false,
+    dead: false
+  };
+  const { error } = await sb.from("entries").upsert(row, { onConflict: "ep,map,channel" });
+  if (error) alert("上傳失敗：" + error.message);
+}
+
+/** ===== 刪除 ===== */
+async function deleteEntry(ep, map, channel) {
+  const { error } = await sb.from("entries")
+    .delete()
+    .eq("ep", ep).eq("map", map).eq("channel", String(channel));
+  if (error) alert("刪除失敗：" + error.message);
+}
+
+/** ===== 切換已死 ===== */
+async function toggleDead(ep, map, channel, dead) {
+  const { error } = await sb.from("entries")
+    .update({ dead })
+    .eq("ep", ep).eq("map", map).eq("channel", String(channel));
+  if (error) console.error("toggleDead error", error);
+}
+
+/** ===== 分流後移（雲端） ===== */
+async function shiftChannels(ep, map, at) {
+  // 從現有 state 取出受影響列，依分流大→小處理
+  const affected = Object.values(state.entries)
+    .filter(v => v.ep === ep && v.map === map && parseInt(v.channel,10) >= at)
+    .sort((a,b)=>parseInt(b.channel,10)-parseInt(a.channel,10));
+
+  if (!affected.length) { shiftMsg.textContent = "沒有可後移的分流。"; return; }
+
+  for (const v of affected) {
+    const newCh = String(parseInt(v.channel,10)+1);
+    // 先 upsert 新分流，避免 unique 衝突，再刪除舊的
+    await sb.from("entries").upsert({
+      ep: v.ep, map: v.map, level: v.level,
+      channel: newCh, target_iso: v.targetISO, dead: v.dead, checked: false
+    }, { onConflict: "ep,map,channel" });
+    await sb.from("entries").delete().eq("ep", v.ep).eq("map", v.map).eq("channel", v.channel);
+  }
+}
+
+/** ===== Realtime：自動更新 ===== */
+let refreshTimer = null;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(pullLatest, 300);
+}
+sb.channel("entries-realtime")
+  .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => {
+    scheduleRefresh();
+  })
+  .subscribe();
+
+/** ===== 事件綁定 ===== */
+document.getElementById('addBtn').addEventListener('click', async ()=>{
   const ep = epSel.value;
   const map = mapSel.value;
   const level = levelInp.value || "";
   const ch = chSel.value;
-  const h = clamp(hhInp.value, 0, 99);
-  const m = clamp(mmInp.value, 0, 59);
-  const s = clamp(ssInp.value, 0, 59);
+  const h = parseInt(hhInp.value||"0",10);
+  const m = parseInt(mmInp.value||"0",10);
+  const s = parseInt(ssInp.value||"0",10);
   if (!ep || !map || !ch){ alert('請完整選擇 EP / 地圖 / 分流'); return; }
-  if (h===0 && m===0 && s===0){ alert('倒數時間不可為 0'); return; }
-
+  if ((h|0)===0 && (m|0)===0 && (s|0)===0){ alert('倒數時間不可為 0'); return; }
   const target = new Date(Date.now() + (h*3600 + m*60 + s)*1000);
-  const key = keyOf(ep,map,ch);
-  const prev = state.entries[key] || {};
-  state.entries[key] = {
-    ep, map, level, channel: ch,
-    targetISO: target.toISOString(),
-    checked: !!prev.checked,
-    alertedBefore: false,
-    alertedFinal: false,
-    dead: false,
-  };
-  save(); render();
+  await upsertEntry({ ep, map, level, channel: ch, targetISO: target.toISOString() });
 });
 
-function getSelectedRows(){
-  return Object.values(state.entries).filter(r=>r.checked).sort((a,b)=>new Date(a.targetISO)-new Date(b.targetISO));
-}
-function getAllRows(){
-  return Object.values(state.entries).sort((a,b)=>new Date(a.targetISO)-new Date(b.targetISO));
-}
-
 document.getElementById('copyCheckedBtn').addEventListener('click', ()=>{
-  const rows = getSelectedRows();
+  const rows = Object.values(state.entries).filter(r=>r.checked).sort((a,b)=>new Date(a.targetISO)-new Date(b.targetISO));
   if (!rows.length){ alert('沒有勾選任何列'); return; }
   const text = rows.map(r=>{
     const lvl = String(r.level||"").replace(/^Lv\.?/i,'');
     const t = fmtTime(new Date(r.targetISO));
     return `${r.ep}-${lvl}-${r.channel}-${t}`;
-  }).join('\n');
+  }).join('\\n');
   navigator.clipboard.writeText(text).then(()=>toast());
 });
 
 document.getElementById('copyAllBtn').addEventListener('click', ()=>{
-  const rows = getAllRows();
+  const rows = Object.values(state.entries).sort((a,b)=>new Date(a.targetISO)-new Date(b.targetISO));
   if (!rows.length){ alert('目前清單為空'); return; }
   const text = rows.map(r=>{
     const lvl = String(r.level||"").replace(/^Lv\.?/i,'');
     const t = fmtTime(new Date(r.targetISO));
     return `${r.ep}-${lvl}-${r.channel}-${t}`;
-  }).join('\n');
+  }).join('\\n');
   navigator.clipboard.writeText(text).then(()=>toast('已複製全部！'));
 });
 
-document.getElementById('delCheckedBtn').addEventListener('click', ()=>{
+document.getElementById('delCheckedBtn').addEventListener('click', async ()=>{
   const keys = Object.entries(state.entries).filter(([,v])=>v.checked).map(([k])=>k);
   if (!keys.length){ alert('沒有勾選任何列'); return; }
-  keys.forEach(k=>delete state.entries[k]);
-  save(); render();
+  for (const k of keys){
+    const [ep,map,ch] = k.split('||');
+    await deleteEntry(ep, map, ch);
+  }
 });
-document.getElementById('delAllBtn').addEventListener('click', ()=>{
+document.getElementById('delAllBtn').addEventListener('click', async ()=>{
   if (!confirm('確定要清除全部嗎？')) return;
-  state.entries = {};
-  save(); render();
+  for (const k of Object.keys(state.entries)){
+    const [ep,map,ch] = k.split('||');
+    await deleteEntry(ep, map, ch);
+  }
 });
 
 /** 勾選框 */
@@ -452,63 +542,44 @@ tbody.addEventListener('change', (e)=>{
   const key = tr.dataset.key;
   if (state.entries[key]){
     state.entries[key].checked = e.target.checked;
-    save();
   }
 });
 
-/** 時間欄「已死」按鈕（開關型） */
-tbody.addEventListener('click', (e)=>{
+/** 時間欄「已死」按鈕（開關型，寫回雲端） */
+tbody.addEventListener('click', async (e)=>{
   if (!e.target.classList.contains('dead-btn')) return;
   const tr = e.target.closest('tr'); if (!tr) return;
-  const key = tr.dataset.key;
-  const row = state.entries[key];
+  const [ep,map,ch] = tr.dataset.key.split('||');
+  const row = state.entries[tr.dataset.key];
   if (!row) return;
-  row.dead = !row.dead;
-  save(); render();
+  await toggleDead(ep, map, ch, !row.dead);
 });
 
 /** ===== 分流後移 ===== */
-const shiftBtnEl = document.getElementById('shiftBtn');
-shiftBtnEl.addEventListener('click', openShiftDialog);
-function openShiftDialog(){
+document.getElementById('shiftBtn').addEventListener('click', ()=>{
   shiftEp.value = epSel.value;
   refreshShiftMaps();
   shiftMap.value = mapSel.value;
   shiftAt.value = '1';
   shiftMsg.textContent = '';
   shiftOverlay.classList.remove('hidden');
-}
-function closeShiftDialog(){ shiftOverlay.classList.add('hidden'); }
-document.getElementById('shiftCancel').addEventListener('click', closeShiftDialog);
+});
+document.getElementById('shiftCancel').addEventListener('click', ()=>shiftOverlay.classList.add('hidden'));
 shiftEp.addEventListener('change', refreshShiftMaps);
-document.getElementById('shiftOk').addEventListener('click', ()=>{
+document.getElementById('shiftOk').addEventListener('click', async ()=>{
   const ep = shiftEp.value;
   const map = shiftMap.value;
   let at = parseInt(shiftAt.value,10);
   if (!ep || !map || !at || at<1){ shiftMsg.textContent = '請輸入正確的分流號（>=1）'; return; }
-
-  const affected = Object.entries(state.entries)
-    .filter(([,v]) => v.ep===ep && v.map===map && parseInt(v.channel,10) >= at)
-    .map(([k,v]) => ({key:k, data:v, ch:parseInt(v.channel,10)}));
-
-  if (!affected.length){ shiftMsg.textContent = '沒有可後移的分流。'; return; }
-
-  affected.sort((a,b)=>b.ch - a.ch).forEach(item=>{
-    const oldKey = item.key;
-    const v = item.data;
-    const newChannel = String(item.ch + 1);
-    const newKey = keyOf(v.ep, v.map, newChannel);
-    state.entries[newKey] = { ...v, channel: newChannel };
-    delete state.entries[oldKey];
-  });
-
-  save(); render(); closeShiftDialog();
-  toast(`已將 ${ep} / ${map} 從分流 ${at} 起全部後移 +1`);
+  shiftMsg.textContent = '處理中…';
+  await shiftChannels(ep, map, at);
+  shiftMsg.textContent = '已送出更新';
+  setTimeout(()=>shiftOverlay.classList.add('hidden'), 600);
 });
 
 /** ===== 提示音 & 提前提醒 ===== */
-soundToggle.addEventListener('change', ()=>{ state.soundEnabled = soundToggle.checked; save(); });
-alertBefore.addEventListener('change', ()=>{ state.alertBeforeMin = parseInt(alertBefore.value,10)||0; save(); });
+soundToggle.addEventListener('change', ()=>{ state.soundEnabled = soundToggle.checked; savePref(); });
+alertBefore.addEventListener('change', ()=>{ state.alertBeforeMin = parseInt(alertBefore.value,10)||0; savePref(); });
 
 setInterval(()=>{
   const now = new Date();
@@ -516,28 +587,14 @@ setInterval(()=>{
   Object.values(state.entries).forEach(r=>{
     const t = new Date(r.targetISO).getTime();
     if (!r.alertedBefore && beforeMs>0 && now.getTime() >= (t - beforeMs) && now.getTime() < t){
-      beep(); r.alertedBefore = true; save();
+      beep(); r.alertedBefore = true;
     }
     if (!r.alertedFinal && now.getTime() >= t){
-      beep(); r.alertedFinal = true; save();
+      beep(); r.alertedFinal = true;
     }
   });
   render();
 }, 1000);
-
-/** ===== 時分秒控制 ===== */
-document.addEventListener('click', e=>{
-  if (!e.target.matches('button[data-target]')) return;
-  const id = e.target.getAttribute('data-target');
-  const delta = parseInt(e.target.getAttribute('data-delta'),10) || 0;
-  const input = document.getElementById(id);
-  if (!input) return;
-  let v = parseInt(input.value,10) || 0;
-  v += delta;
-  if (id === 'hh') v = Math.max(0, Math.min(99, v));
-  if (id === 'mm' || id === 'ss') v = Math.max(0, Math.min(59, v));
-  input.value = v;
-});
 
 /** ===== 密碼驗證 ===== */
 async function fetchPassword(timeoutMs = 8000){
@@ -592,13 +649,14 @@ async function gate(){
   await loadPassword();
 }
 
-/** ===== 金鑰：匯出 ===== */
+/** ===== 金鑰：匯出（僅做備份用） ===== */
 const CRC32_TABLE = (()=>{let c,t=[];for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++){c=((c&1)?(0xEDB88320^(c>>>1)):(c>>>1));}t[n]=c>>>0;}return t;})();
 function crc32(str){ let crc=0^(-1); for(let i=0;i<str.length;i++){ crc=(crc>>>8) ^ CRC32_TABLE[(crc^str.charCodeAt(i)) & 0xFF]; } return ((crc^(-1))>>>0).toString(16).padStart(8,'0'); }
 function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
 
 genKeyBtn.addEventListener('click', ()=>{
-  const payload = { v:1, ts:Date.now(), entries: state.entries, pref:{ soundEnabled:state.soundEnabled, alertBeforeMin:state.alertBeforeMin } };
+  const payloadEntries = state.entries;
+  const payload = { v:1, ts:Date.now(), entries: payloadEntries, pref:{ soundEnabled:state.soundEnabled, alertBeforeMin:state.alertBeforeMin } };
   const json = JSON.stringify(payload);
   const b64 = b64encode(json);
   const sig = crc32(b64);
@@ -609,15 +667,20 @@ genKeyBtn.addEventListener('click', ()=>{
 
 /** ===== 啟動 ===== */
 (async function init(){
-  load();
+  loadPref();
   initSelectors();
-  epSel.addEventListener('change', refreshMaps);
-  mapSel.addEventListener('change', refreshLevel);
+  bindTimeButtons();   // 時間按鈕綁定
   render();
+
+  // 密碼門檻
   await gate();
+
+  // 匿名登入以符合 RLS 'authenticated'
+  try { await sb.auth.signInAnonymously(); } catch(e) { console.warn("匿名登入失敗", e); }
+
+  // 初次同步雲端資料
+  await pullLatest();
 })();
 </script>
 </body>
 </html>
-
-
