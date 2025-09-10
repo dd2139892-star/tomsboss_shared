@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>麥當勞單點專用_多人共用版 v1（Web）</title>
+<title>麥當勞單點專用_多人共用版 v2（Web）</title>
 <style>
   :root{--bg:#0b0f14;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--border:#1f2937}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial}
   .container{max-width:1100px;margin:24px auto;padding:0 16px}
-  h1{font-size:20px;margin:0 0 14px;display:flex;gap:10px;align-items:center}
+  h1{font-size:20px;margin:0 0 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .row{display:flex;gap:10px;flex-wrap:wrap}
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
   .toolbar .btn,.btn{background:#1f2937;border:1px solid #2b3446;color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
@@ -45,14 +45,17 @@
   .timeStrike{ text-decoration: line-through; opacity:.65 }
   .pw-msg{margin-top:8px;font-size:12px;color:#9fb2d1}
   .badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid #2b3446;color:#cbd5e1}
+  /* active filter button */
+  .btn.active{background:#2563eb;border-color:#2563eb}
 </style>
 </head>
 <body>
 
 <div class="container">
   <h1>
-    麥當勞單點專用_多人共用版 v1（Web）
+    麥當勞單點專用_多人共用版 v2
     <span id="rtStatus" class="badge">Realtime: …</span>
+    <span id="onlineBadge" class="badge">Online: 0</span>
   </h1>
 
   <div class="card">
@@ -143,6 +146,9 @@
   </div>
 
   <div class="card" style="margin-top:12px">
+    <!-- EP Filter bar -->
+    <div class="toolbar" id="epFilterBar" style="margin:2px 0 6px"></div>
+
     <table id="list">
       <thead>
         <tr>
@@ -164,8 +170,8 @@
 <div id="pwOverlay" class="overlay">
   <div class="modal">
     <h3>密碼驗證</h3>
-    <p class="muted" style="margin:6px 0 10px">請輸入本週密碼才能進入（伺服器驗證）。</p>
-    <input id="pwInput" type="password" placeholder="本週密碼" style="width:100%">
+    <p class="muted" style="margin:6px 0 10px">請輸入密碼才能進入（伺服器驗證）。</p>
+    <input id="pwInput" type="password" placeholder="密碼" style="width:100%">
     <div class="actions">
       <button id="pwCancel">離開</button>
       <button id="pwOk" class="primary">確定</button>
@@ -219,6 +225,7 @@ const state = {
   entries: {},  // key `${ep}||${map}||${channel}` → row
   soundEnabled: true,
   alertBeforeMin: 0,
+  filterEp: 'ALL', // 本機篩選（不同步）
 };
 
 /** ========= DOM ========= */
@@ -233,6 +240,8 @@ const tbody=document.getElementById('tbody');
 const soundToggle=document.getElementById('soundToggle');
 const alertBefore=document.getElementById('alertBefore');
 const rtStatus=document.getElementById('rtStatus');
+const onlineBadge=document.getElementById('onlineBadge');
+const epFilterBar=document.getElementById('epFilterBar');
 
 /* 分流後移 */
 const shiftOverlay=document.getElementById('shiftOverlay');
@@ -280,11 +289,11 @@ const LS_KEY="tomsboss_web_entries";
 const LS_PREF="tomsboss_web_pref";
 function save(){
   localStorage.setItem(LS_KEY, JSON.stringify(state.entries));
-  localStorage.setItem(LS_PREF, JSON.stringify({soundEnabled:state.soundEnabled, alertBeforeMin:state.alertBeforeMin}));
+  localStorage.setItem(LS_PREF, JSON.stringify({soundEnabled:state.soundEnabled, alertBeforeMin:state.alertBeforeMin, filterEp:state.filterEp}));
 }
 function load(){
   try{const d=JSON.parse(localStorage.getItem(LS_KEY)||"{}"); if(d&&typeof d==="object") state.entries=d;}catch{}
-  try{const p=JSON.parse(localStorage.getItem(LS_PREF)||"{}"); if(typeof p?.soundEnabled==="boolean") state.soundEnabled=p.soundEnabled; if(typeof p?.alertBeforeMin==="number") state.alertBeforeMin=p.alertBeforeMin;}catch{}
+  try{const p=JSON.parse(localStorage.getItem(LS_PREF)||"{}"); if(typeof p?.soundEnabled==="boolean") state.soundEnabled=p.soundEnabled; if(typeof p?.alertBeforeMin==="number") state.alertBeforeMin=p.alertBeforeMin; if(typeof p?.filterEp==="string") state.filterEp=p.filterEp;}catch{}
 }
 
 /** ========= 初始化選單 ========= */
@@ -311,9 +320,37 @@ function refreshShiftMaps(){
   shiftMap.innerHTML = maps.map(m=>`<option value="${m}">${m}</option>`).join("");
 }
 
+/** ========= EP 篩選（本機） ========= */
+function initEpFilter(){
+  const eps = ['ALL', ...Object.keys(EP_MAP_LEVEL)];
+  epFilterBar.innerHTML = eps.map(ep => {
+    const label = ep==='ALL' ? '全部' : ep;
+    return `<button class="btn epFilterBtn" data-ep="${ep}">${label}</button>`;
+  }).join("");
+  epFilterBar.addEventListener('click', e => {
+    const btn = e.target.closest('.epFilterBtn'); if(!btn) return;
+    state.filterEp = btn.dataset.ep;
+    save();
+    updateEpFilterUI();
+    render();
+  });
+  updateEpFilterUI();
+}
+function updateEpFilterUI(){
+  const btns = epFilterBar.querySelectorAll('.epFilterBtn');
+  btns.forEach(b => {
+    if(b.dataset.ep === state.filterEp) b.classList.add('active');
+    else b.classList.remove('active');
+  });
+}
+
 /** ========= 表格 ========= */
 function render(){
-  const rows = Object.values(state.entries).sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
+  let rows = Object.values(state.entries);
+  if(state.filterEp && state.filterEp !== 'ALL'){
+    rows = rows.filter(r => r.ep === state.filterEp);
+  }
+  rows = rows.sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
   tbody.innerHTML = rows.map(row=>{
     const t=new Date(row.target_iso), now=new Date();
     let cls=""; if(now>=t) cls="timeDue"; else if((t-now)<=10*60*1000) cls="timeSoon";
@@ -348,11 +385,9 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   const target=new Date(Date.now()+(h*3600+m*60+s)*1000).toISOString();
   const rowDb={ ep, map, level, channel: ch, target_iso: target, dead:false, updated_at:new Date().toISOString() };
 
-  // 寫 DB（不含 checked，避免把勾選同步出去）
   const { data, error } = await sb.from('entries').upsert(rowDb, { onConflict: 'ep,map,channel' }).select().single();
   if(error){ alert('新增失敗：'+error.message); return; }
 
-  // 本地立即顯示（樂觀更新），Realtime 會推送到其他裝置
   const key = keyOf(data.ep, data.map, data.channel);
   state.entries[key] = { ...data, checked:false, alertedBefore:false, alertedFinal:false };
   save(); render();
@@ -468,7 +503,6 @@ async function startRealtime(){
   const ch = sb.channel('entries-ch')
     .on('postgres_changes', { event:'*', schema:'public', table:'entries' }, payload => {
       const e = payload.eventType;
-      console.log('Realtime payload:', e, payload);
       if (e === 'INSERT' || e === 'UPDATE') {
         const r = payload.new;
         const k = keyOf(r.ep,r.map,r.channel);
@@ -478,7 +512,6 @@ async function startRealtime(){
           alertedBefore: state.entries[k]?.alertedBefore || false,
           alertedFinal: state.entries[k]?.alertedFinal || false
         };
-        // 如果 UPDATE 改變了 key（理論上不會，但以防萬一）
         if(payload.old){
           const ko = keyOf(payload.old.ep, payload.old.map, payload.old.channel);
           if(ko !== k){ delete state.entries[ko]; }
@@ -488,18 +521,48 @@ async function startRealtime(){
         delete state.entries[keyOf(r.ep,r.map,r.channel)];
       }
       save(); render();
-      scheduleResync(); // 保險：合併後做一次輕量 resync
+      scheduleResync();
     })
     .subscribe((status)=>{
-      console.log('Realtime status:', status);
       if(rtStatus){ rtStatus.textContent = `Realtime: ${status}`; }
     });
 }
 
+/** ========= Presence（全站在線） ========= */
+let presCh = null;
+function getUserId(){
+  const k='tomsboss_user_id';
+  let id = localStorage.getItem(k);
+  if(!id){ id = (crypto.randomUUID? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem(k, id); }
+  return id;
+}
+function updateOnlineBadge(stateObj){
+  const count = Object.keys(stateObj||{}).length;
+  if(onlineBadge) onlineBadge.textContent = `Online: ${count}`;
+}
+async function startPresence(){
+  const userId = getUserId();
+  presCh = sb.channel('presence:online', { config: { presence: { key: userId }}});
+
+  presCh
+    .on('presence', { event: 'sync' }, () => {
+      const presenceState = presCh.presenceState();
+      updateOnlineBadge(presenceState);
+    })
+    .subscribe(async (status) => {
+      if(status === 'SUBSCRIBED'){
+        try{ await presCh.track({ ts: Date.now() }); }catch(e){}
+      }
+    });
+
+  window.addEventListener('beforeunload', () => {
+    try{ presCh && presCh.untrack(); }catch{}
+  });
+}
+
 async function pullAll(){
   const { data, error } = await sb.from('entries').select('*');
-  if(error){ console.error('pullAll error', error); return; }
-  // 保留每列本地的 checked/alerted 標記
+  if(error){ return; }
   const cur = state.entries;
   state.entries={};
   (data||[]).forEach(r=>{
@@ -532,8 +595,13 @@ async function gate(){
     try{
       const { data, error } = await sb.rpc('check_weekly_password', { p_pass: pass });
       if(error){ setMsg('伺服器錯誤，稍後再試'); okBtn.disabled=false; return; }
-      if(data===true){ overlay.classList.add('hidden'); setMsg(''); await startRealtime(); }
-      else { setMsg('密碼錯誤或已過期'); okBtn.disabled=false; input.select(); }
+      if(data===true){
+        overlay.classList.add('hidden'); setMsg('');
+        await startRealtime();
+        startPresence();
+      } else {
+        setMsg('密碼錯誤'); okBtn.disabled=false; input.select();
+      }
     }catch(e){ setMsg('網路或伺服器異常'); okBtn.disabled=false; }
   }
   okBtn.onclick=tryCheck;
@@ -545,9 +613,10 @@ async function gate(){
 (async function init(){
   load();
   initSelectors();
+  initEpFilter(); // 本機 EP 篩選
   epSel.addEventListener('change', refreshMaps);
   mapSel.addEventListener('change', refreshLevel);
-  await gate(); // 驗證成功後才 startRealtime
+  await gate();
 })();
 </script>
 </body>
