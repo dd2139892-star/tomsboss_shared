@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>麥當勞單點專用_多人共用版 v2（Web）</title>
+<title>麥當勞單點專用_多人共用版 v3（Web）</title>
 <style>
   :root{--bg:#0b0f14;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--border:#1f2937}
   *{box-sizing:border-box}
@@ -45,15 +45,24 @@
   .timeStrike{ text-decoration: line-through; opacity:.65 }
   .pw-msg{margin-top:8px;font-size:12px;color:#9fb2d1}
   .badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid #2b3446;color:#cbd5e1}
-  /* active filter button */
   .btn.active{background:#2563eb;border-color:#2563eb}
+
+  /* Notices bar */
+  #noticesBar{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
+  .notice{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #233047;border-radius:10px;background:#0e1420}
+  .notice .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .notice .t{color:#9fb2d1;font-size:12px}
+  .n-green .dot{background:#22c55e}
+  .n-red .dot{background:#ef4444}
+  .n-orange .dot{background:#f59e0b}
+  .n-blue .dot{background:#60a5fa}
 </style>
 </head>
 <body>
 
 <div class="container">
   <h1>
-    麥當勞單點專用_多人共用版 v2
+    麥當勞單點專用_多人共用版 v3
     <span id="rtStatus" class="badge">Realtime: …</span>
     <span id="onlineBadge" class="badge">Online: 0</span>
   </h1>
@@ -148,6 +157,11 @@
   <div class="card" style="margin-top:12px">
     <!-- EP Filter bar -->
     <div class="toolbar" id="epFilterBar" style="margin:2px 0 6px"></div>
+<div style="display:flex;gap:10px;align-items:center;margin:0 0 8px">
+  <select id="mapFilter" style="min-width:260px"></select>
+</div>
+    <!-- Global notices (site-wide) -->
+    <div id="noticesBar"></div>
 
     <table id="list">
       <thead>
@@ -226,7 +240,9 @@ const state = {
   soundEnabled: true,
   alertBeforeMin: 0,
   filterEp: 'ALL', // 本機篩選（不同步）
+  filterMap: 'ALL',
 };
+let notices = []; // 最多 3 則
 
 /** ========= DOM ========= */
 const epSel=document.getElementById('ep');
@@ -242,6 +258,8 @@ const alertBefore=document.getElementById('alertBefore');
 const rtStatus=document.getElementById('rtStatus');
 const onlineBadge=document.getElementById('onlineBadge');
 const epFilterBar=document.getElementById('epFilterBar');
+const mapFilterSel=document.getElementById('mapFilter');
+const noticesBar=document.getElementById('noticesBar');
 
 /* 分流後移 */
 const shiftOverlay=document.getElementById('shiftOverlay');
@@ -251,6 +269,24 @@ const shiftAt=document.getElementById('shiftAt');
 const shiftMsg=document.getElementById('shiftMsg');
 
 /** ========= 工具 ========= */
+// === Map filter helpers ===
+function buildMapOptionsFor(epValue){
+  // When ALL, empty dropdown
+  if(epValue==='ALL'){
+    if(mapFilterSel){
+      mapFilterSel.innerHTML = ''; // no options
+      state.filterMap = 'ALL';
+    }
+    return;
+  }
+  const maps = Object.keys(EP_MAP_LEVEL[epValue]||{});
+  const opts = ['<option value="ALL">全部地圖</option>'].concat(maps.map(m=>`<option value="${m}">${m}</option>`));
+  mapFilterSel.innerHTML = opts.join('');
+  // keep previous selection if still valid
+  const cur = state.filterMap || 'ALL';
+  if(cur==='ALL' || maps.includes(cur)){ mapFilterSel.value = cur; } else { mapFilterSel.value = 'ALL'; state.filterMap='ALL'; }
+}
+
 const pad2 = n => String(n).padStart(2,"0");
 const fmtTime = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 function fmtDisplayTime(target){
@@ -263,14 +299,17 @@ function fmtDisplayTime(target){
 }
 function keyOf(ep,map,channel){return `${ep}||${map}||${channel}`;}
 
+/* 更強的顏色分散：24 色固定調色盤 + 更高飽和/亮度 */
+
+/* 更亮且清楚區分的地圖顏色（36 色輪） */
+const HUES = Array.from({length:36}, (_,i)=>i*10); // 0,10,...,350
 function strHash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return Math.abs(h);}
 function mapColor(name){
-  const PA=[12,42,72,102,132,162,192,222,252,282,312,342];
-  const idx=Math.abs(strHash(name))%PA.length, h=PA[idx];
-  const alt=(Math.abs(strHash(name)>>4)%2)===0;
-  const sStrong=72,lStrong=alt?42:35;
-  const sSoft=70,lSoft=alt?30:26,ALPHA=.22;
-  return { bg:`hsl(${h}deg ${sStrong}% ${lStrong}%)`, soft:`hsla(${h}, ${sSoft}%, ${lSoft}%, ${ALPHA})` };
+  const idx = strHash(name) % HUES.length;
+  const h = HUES[idx];
+  const bg = `hsl(${h}deg 80% 40%)`;           // 左側條 & dot：高飽和、偏深
+  const soft = `hsla(${h}, 85%, 65%, 0.35)`;   // 背景：同色亮透明，易區分
+  return { bg, soft };
 }
 function beep(){
   if(!state.soundEnabled) return;
@@ -332,6 +371,7 @@ function initEpFilter(){
     state.filterEp = btn.dataset.ep;
     save();
     updateEpFilterUI();
+    buildMapOptionsFor(state.filterEp);
     render();
   });
   updateEpFilterUI();
@@ -344,12 +384,45 @@ function updateEpFilterUI(){
   });
 }
 
+
+// Map dropdown change -> update filter and render
+if(mapFilterSel){ mapFilterSel.addEventListener('change', ()=>{ state.filterMap = mapFilterSel.value || 'ALL'; save(); render(); }); }
+
+/** ========= Notices ========= */
+function renderNotices(){
+  noticesBar.innerHTML = notices.map(n=>{
+    const colorClass = n.kind==='add' ? 'n-green'
+      : n.kind==='del_checked' ? 'n-red'
+      : n.kind==='del_all' ? 'n-orange'
+      : 'n-blue';
+    const time = new Date(n.created_at||Date.now());
+    const tStr = `[${fmtTime(time)}]`;
+    let text='';
+    if(n.kind==='add'){
+      text = `${n.ep} ｜ ${n.map} ｜ ${n.level||''} ｜ 分流 ${n.channel} ｜ BOSS 新增成功`;
+    }else if(n.kind==='del_checked'){
+      text = `${n.ep} ｜ ${n.map} ｜ ${n.level||''} ｜ 分流 ${n.channel} ｜ BOSS 清除成功`;
+    }else if(n.kind==='del_all'){
+      text = `全部清除成功`;
+    }else if(n.kind==='shift'){
+      text = `${n.ep} ｜ ${n.map} ｜ ${n.level||''} ｜ 新分流 ${n.new_channel} ｜ 分流後移成功`;
+    }
+    return `<div class="notice ${colorClass}"><span class="dot"></span><span class="t">${tStr}</span><span>${text}</span></div>`;
+  }).join("");
+}
+function pushNoticeLocally(n){
+  notices.unshift(n);
+  if(notices.length>3) notices.length=3;
+  renderNotices();
+}
+
 /** ========= 表格 ========= */
 function render(){
   let rows = Object.values(state.entries);
   if(state.filterEp && state.filterEp !== 'ALL'){
     rows = rows.filter(r => r.ep === state.filterEp);
   }
+  if(state.filterMap && state.filterMap!=='ALL'){ rows = rows.filter(r=> r.map === state.filterMap); }
   rows = rows.sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
   tbody.innerHTML = rows.map(row=>{
     const t=new Date(row.target_iso), now=new Date();
@@ -391,6 +464,9 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   const key = keyOf(data.ep, data.map, data.channel);
   state.entries[key] = { ...data, checked:false, alertedBefore:false, alertedFinal:false };
   save(); render();
+
+  // Insert notice (site-wide)
+  await sb.from('notices').insert({ kind:'add', ep:data.ep, map:data.map, level:data.level, channel:data.channel });
 });
 
 document.getElementById('copyCheckedBtn').addEventListener('click', ()=>{
@@ -399,23 +475,25 @@ document.getElementById('copyCheckedBtn').addEventListener('click', ()=>{
   const text=rows.map(r=>{
     const lvl=String(r.level||"").replace(/^Lv\.?/i,''); const t=fmtTime(new Date(r.target_iso));
     return `${r.ep}-${lvl}-${r.channel}-${t}`;
-  }).join('\n');
+  }).join('\\n');
   navigator.clipboard.writeText(text);
 });
 document.getElementById('copyAllBtn').addEventListener('click', ()=>{
   const rows=Object.values(state.entries).sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
   if(!rows.length) return alert('目前清單為空');
   const text=rows.map(r=>{
-    const lvl=String(r.level||"").replace(/^Lv\.?/i,''); const t=fmtTime(new Date(r.target_iso));
+    const lvl=String(r.level||"").replace(/^Lv\\.?/i,''); const t=fmtTime(new Date(r.target_iso));
     return `${r.ep}-${lvl}-${r.channel}-${t}`;
-  }).join('\n');
+  }).join('\\n');
   navigator.clipboard.writeText(text);
 });
 document.getElementById('delCheckedBtn').addEventListener('click', async ()=>{
-  const keys=Object.values(state.entries).filter(v=>v.checked).map(v=>({ep:v.ep,map:v.map,channel:v.channel}));
+  const keys=Object.values(state.entries).filter(v=>v.checked).map(v=>({ep:v.ep,map:v.map,channel:v.channel,level:v.level}));
   if(!keys.length) return alert('沒有勾選任何列');
   for(const k of keys){
     await sb.from('entries').delete().eq('ep',k.ep).eq('map',k.map).eq('channel',k.channel);
+    // notice for each removed
+    await sb.from('notices').insert({ kind:'del_checked', ep:k.ep, map:k.map, level:k.level, channel:k.channel });
     delete state.entries[keyOf(k.ep,k.map,k.channel)];
   }
   save(); render();
@@ -424,6 +502,7 @@ document.getElementById('delAllBtn').addEventListener('click', async ()=>{
   if(!confirm('確定要清除全部嗎？')) return;
   await sb.from('entries').delete().neq('ep','__never__');
   state.entries = {}; save(); render();
+  await sb.from('notices').insert({ kind:'del_all' });
 });
 
 /** checkbox 本地專用（不寫 DB、不觸發同步） */
@@ -467,6 +546,9 @@ document.getElementById('shiftOk').addEventListener('click', async ()=>{
   }
   save(); render();
   shiftOverlay.classList.add('hidden');
+
+  // push one notice for the action (use the chosen insertion channel)
+  await sb.from('notices').insert({ kind:'shift', ep:ep, map:map, level:(EP_MAP_LEVEL[ep]||{})[map]||'', new_channel:String(at) });
 });
 
 /** ========= 提示音 ========= */
@@ -499,6 +581,7 @@ function scheduleResync(){ clearTimeout(resyncTimer); resyncTimer=setTimeout(()=
 
 async function startRealtime(){
   await pullAll();
+  await pullNotices();
 
   const ch = sb.channel('entries-ch')
     .on('postgres_changes', { event:'*', schema:'public', table:'entries' }, payload => {
@@ -526,6 +609,13 @@ async function startRealtime(){
     .subscribe((status)=>{
       if(rtStatus){ rtStatus.textContent = `Realtime: ${status}`; }
     });
+
+  // notices realtime
+  const ch2 = sb.channel('notices-ch')
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'notices' }, payload => {
+      pushNoticeLocally(payload.new);
+    })
+    .subscribe();
 }
 
 /** ========= Presence（全站在線） ========= */
@@ -577,6 +667,13 @@ async function pullAll(){
   save(); render();
 }
 
+async function pullNotices(){
+  const { data, error } = await sb.from('notices').select('*').order('created_at',{ascending:false}).limit(3);
+  if(error){ return; }
+  notices = data || [];
+  renderNotices();
+}
+
 /** ========= 密碼驗證（RPC） ========= */
 async function gate(){
   const overlay=document.getElementById('pwOverlay');
@@ -614,6 +711,7 @@ async function gate(){
   load();
   initSelectors();
   initEpFilter(); // 本機 EP 篩選
+  buildMapOptionsFor(state.filterEp);
   epSel.addEventListener('change', refreshMaps);
   mapSel.addEventListener('change', refreshLevel);
   await gate();
