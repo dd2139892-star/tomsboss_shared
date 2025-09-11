@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>麥當勞單點專用_多人共用版 v3（Web）</title>
+<title>麥當勞單點專用_多人共用版 v4（Web）</title>
 <style>
   :root{--bg:#0b0f14;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--border:#1f2937}
   *{box-sizing:border-box}
@@ -62,7 +62,7 @@
 
 <div class="container">
   <h1>
-    麥當勞單點專用_多人共用版 v3
+    麥當勞單點專用_多人共用版 v4
     <span id="rtStatus" class="badge">Realtime: …</span>
     <span id="onlineBadge" class="badge">Online: 0</span>
   </h1>
@@ -157,9 +157,6 @@
   <div class="card" style="margin-top:12px">
     <!-- EP Filter bar -->
     <div class="toolbar" id="epFilterBar" style="margin:2px 0 6px"></div>
-<div style="display:flex;gap:10px;align-items:center;margin:0 0 8px">
-  <select id="mapFilter" style="min-width:260px"></select>
-</div>
     <!-- Global notices (site-wide) -->
     <div id="noticesBar"></div>
 
@@ -232,7 +229,7 @@ const EP_MAP_LEVEL = {
   "EP9": {"女神的古院":"Lv.75","佩迪米安外城":"Lv.76","魔法師之塔1層":"Lv.77","魔法師之塔2層":"Lv.78","魔法師之塔3層":"Lv.79"},
   "EP10":{"大教堂懺悔路":"Lv.80","大教堂正殿":"Lv.81","大教堂大迴廊":"Lv.82","大教堂至聖所":"Lv.83"},
 };
-const CHANNELS = Array.from({length:10}, (_,i)=>String(i+1));
+const CHANNELS = Array.from({length:15}, (_,i)=>String(i+1));
 
 /** ========= 狀態 ========= */
 const state = {
@@ -240,7 +237,6 @@ const state = {
   soundEnabled: true,
   alertBeforeMin: 0,
   filterEp: 'ALL', // 本機篩選（不同步）
-  filterMap: 'ALL',
 };
 let notices = []; // 最多 3 則
 
@@ -258,7 +254,6 @@ const alertBefore=document.getElementById('alertBefore');
 const rtStatus=document.getElementById('rtStatus');
 const onlineBadge=document.getElementById('onlineBadge');
 const epFilterBar=document.getElementById('epFilterBar');
-const mapFilterSel=document.getElementById('mapFilter');
 const noticesBar=document.getElementById('noticesBar');
 
 /* 分流後移 */
@@ -269,24 +264,6 @@ const shiftAt=document.getElementById('shiftAt');
 const shiftMsg=document.getElementById('shiftMsg');
 
 /** ========= 工具 ========= */
-// === Map filter helpers ===
-function buildMapOptionsFor(epValue){
-  // When ALL, empty dropdown
-  if(epValue==='ALL'){
-    if(mapFilterSel){
-      mapFilterSel.innerHTML = ''; // no options
-      state.filterMap = 'ALL';
-    }
-    return;
-  }
-  const maps = Object.keys(EP_MAP_LEVEL[epValue]||{});
-  const opts = ['<option value="ALL">全部地圖</option>'].concat(maps.map(m=>`<option value="${m}">${m}</option>`));
-  mapFilterSel.innerHTML = opts.join('');
-  // keep previous selection if still valid
-  const cur = state.filterMap || 'ALL';
-  if(cur==='ALL' || maps.includes(cur)){ mapFilterSel.value = cur; } else { mapFilterSel.value = 'ALL'; state.filterMap='ALL'; }
-}
-
 const pad2 = n => String(n).padStart(2,"0");
 const fmtTime = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 function fmtDisplayTime(target){
@@ -300,16 +277,13 @@ function fmtDisplayTime(target){
 function keyOf(ep,map,channel){return `${ep}||${map}||${channel}`;}
 
 /* 更強的顏色分散：24 色固定調色盤 + 更高飽和/亮度 */
-
-/* 更亮且清楚區分的地圖顏色（36 色輪） */
-const HUES = Array.from({length:36}, (_,i)=>i*10); // 0,10,...,350
+const HUES = Array.from({length:24}, (_,i)=>i*15); // 0,15,...345
 function strHash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return Math.abs(h);}
 function mapColor(name){
-  const idx = strHash(name) % HUES.length;
-  const h = HUES[idx];
-  const bg = `hsl(${h}deg 80% 40%)`;           // 左側條 & dot：高飽和、偏深
-  const soft = `hsla(${h}, 85%, 65%, 0.35)`;   // 背景：同色亮透明，易區分
-  return { bg, soft };
+  const idx=strHash(name)%HUES.length, h=HUES[idx];
+  const sStrong=78,lStrong=46; // 左側條色
+  const sSoft=72,lSoft=28,ALPHA=.28; // 背景
+  return { bg:`hsl(${h}deg ${sStrong}% ${lStrong}%)`, soft:`hsla(${h}, ${sSoft}%, ${lSoft}%, ${ALPHA})` };
 }
 function beep(){
   if(!state.soundEnabled) return;
@@ -371,7 +345,6 @@ function initEpFilter(){
     state.filterEp = btn.dataset.ep;
     save();
     updateEpFilterUI();
-    buildMapOptionsFor(state.filterEp);
     render();
   });
   updateEpFilterUI();
@@ -383,10 +356,6 @@ function updateEpFilterUI(){
     else b.classList.remove('active');
   });
 }
-
-
-// Map dropdown change -> update filter and render
-if(mapFilterSel){ mapFilterSel.addEventListener('change', ()=>{ state.filterMap = mapFilterSel.value || 'ALL'; save(); render(); }); }
 
 /** ========= Notices ========= */
 function renderNotices(){
@@ -422,7 +391,6 @@ function render(){
   if(state.filterEp && state.filterEp !== 'ALL'){
     rows = rows.filter(r => r.ep === state.filterEp);
   }
-  if(state.filterMap && state.filterMap!=='ALL'){ rows = rows.filter(r=> r.map === state.filterMap); }
   rows = rows.sort((a,b)=>new Date(a.target_iso)-new Date(b.target_iso));
   tbody.innerHTML = rows.map(row=>{
     const t=new Date(row.target_iso), now=new Date();
@@ -711,7 +679,6 @@ async function gate(){
   load();
   initSelectors();
   initEpFilter(); // 本機 EP 篩選
-  buildMapOptionsFor(state.filterEp);
   epSel.addEventListener('change', refreshMaps);
   mapSel.addEventListener('change', refreshLevel);
   await gate();
